@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>TJA Decomposition Tool (Dan-i Optimized)</title>
+    <title>TJA Decomposition Tool (Universal)</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <style>
         body { font-family: "Helvetica Neue", Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; color: #333; background-color: #f4f6f8; line-height: 1.6; }
@@ -43,7 +43,6 @@
         .log-success { color: #68d391; }
         .log-warn { color: #f6e05e; }
         .log-error { color: #fc8181; }
-        .log-removed { color: #a0aec0; font-style: italic; }
 
         .footer { margin-top: 2rem; font-size: 0.8rem; color: #a0aec0; text-align: center; }
     </style>
@@ -52,7 +51,7 @@
 
 <div class="container">
     <h1>TJA Decomposition Tool</h1>
-    <p class="desc">段位TJAを解析し、EXAM等を削除して個別の曲ファイルへ分割します。</p>
+    <p class="desc">段位TJA(TNDE/OpenTaiko対応)を解析し、EXAM除去＆正しい難易度設定で分割します。</p>
     
     <div class="upload-area">
         <label for="fileInput" class="custom-file-upload">📂 TJAファイルを選択</label>
@@ -98,10 +97,10 @@
         log("処理を開始します...", 'info');
 
         try {
-            // 文字コード読み込み（Shift-JIS優先）
+            // 文字コード読み込み
             let text = await readFileAsText(selectedFile, 'shift-jis');
             if (!text.includes('TITLE:') && !text.includes('title:') && !text.includes('#NEXTSONG')) {
-                log("Shift-JISでの読み込みに失敗した可能性があります。UTF-8で再試行します。", 'warn');
+                log("UTF-8で再試行します。", 'warn');
                 text = await readFileAsText(selectedFile, 'utf-8');
             }
 
@@ -114,25 +113,18 @@
             let isGlobalHeader = true;
             let balloonIndex = 0; 
 
-            // --- 1. 曲ごとのブロック分け ---
+            // --- 1. ブロック分け ---
             for (let line of lines) {
-                // BOM削除
                 if (line.charCodeAt(0) === 0xFEFF) line = line.substr(1);
                 const trimLine = line.trim();
 
-                // 共通ヘッダのBALLOON取得
                 if (isGlobalHeader && trimLine.toUpperCase().startsWith('BALLOON:')) {
                     const val = trimLine.substring(8).trim();
-                    if (val) {
-                        globalHeader.balloon = val.split(/[,、]/).map(n => parseInt(n.trim()) || 0);
-                        log(`共通風船データを検出: ${globalHeader.balloon.length}個`, 'info');
-                    }
+                    if (val) globalHeader.balloon = val.split(/[,、]/).map(n => parseInt(n.trim()) || 0);
                 }
 
-                // 曲区切り検知 (#NEXTSONG)
                 const isNextSong = trimLine.toUpperCase().startsWith('#NEXTSONG');
                 
-                // 1曲目の開始検知 (#START)
                 if (isGlobalHeader && trimLine.toUpperCase().startsWith('#START')) {
                     isGlobalHeader = false;
                 }
@@ -145,13 +137,11 @@
                     currentSong.lines.push(line);
                 }
             }
-            if (currentSong.lines.length > 0) {
-                songs.push(currentSong);
-            }
+            if (currentSong.lines.length > 0) songs.push(currentSong);
 
-            log(`合計 ${songs.length} ブロックを検出。変換を開始します。`, 'info');
+            log(`合計 ${songs.length} 曲を検出。`, 'info');
 
-            // --- 2. 各曲データの加工 ---
+            // --- 2. データ加工と分割 ---
             let currentBpm = 0;
 
             for (let i = 0; i < songs.length; i++) {
@@ -159,25 +149,23 @@
                 let outputLines = [];
                 let songTitle = `Song_${i+1}`;
                 let songWave = "";
+                let courseStr = "Oni"; // デフォルト
+                let levelStr = "10";   // デフォルト
                 
-                // 1曲目かそれ以外かで分岐
+                // 1曲目
                 if (i === 0) {
-                    // 1曲目は元のヘッダ情報をベースにする
                     song.lines.forEach(l => {
                         if (l.toUpperCase().startsWith('BPM:')) currentBpm = parseFloat(l.split(':')[1]);
                         if (l.toUpperCase().startsWith('TITLE:')) songTitle = l.split(':')[1].trim();
                         if (l.toUpperCase().startsWith('WAVE:')) songWave = l.split(':')[1].trim();
                     });
-                    
-                    // 1曲目の行をコピーするが、EXAMなどは除去する
                     song.lines.forEach(l => {
                         if (shouldKeepLine(l)) outputLines.push(l);
                     });
 
                 } else {
-                    // 2曲目以降: #NEXTSONGから情報抽出
-                    // 引数: Title, Sub, Genre, Wave, ScoreInit, ScoreDiff
-                    // ※EXAMなどが引数に含まれている場合も、これ以降の引数は無視されるのでOK
+                    // 2曲目以降: #NEXTSONG解析 (TNDE vs OpenTaiko 判別ロジック入り)
+                    // args: [Title, Sub, Genre, Wave, Init, Diff, ArgA, ArgB]
                     const args = parseNextSong(song.nextSongTag);
                     
                     songTitle = args[0] || `Song_${i+1}`;
@@ -186,7 +174,28 @@
                     songWave = args[3] || "";
                     const scoreInit = args[4] || "";
                     const scoreDiff = args[5] || "";
-                    
+
+                    // ★コースとレベルの自動判別★
+                    if (args.length >= 8) {
+                        const valA = parseFloat(args[6]); // 7番目の引数
+                        const valB = parseFloat(args[7]); // 8番目の引数
+                        
+                        // 判別ロジック:
+                        // コースIDは 0～4 (Easy, Normal, Hard, Oni, Edit)
+                        // レベルは通常 1～10 (それ以上もありえる)
+                        // valAが5以上なら、valAはレベル(OpenTaiko形式)である可能性が高い
+                        
+                        if (valA > 4) {
+                            // OpenTaiko形式: Level, Course
+                            levelStr = args[6];
+                            courseStr = mapCourseId(args[7]);
+                        } else {
+                            // TNDE形式: Course, Level (または両方小さい場合はこちらを優先)
+                            courseStr = mapCourseId(args[6]);
+                            levelStr = args[7];
+                        }
+                    }
+
                     // BPM追跡
                     let myBpm = currentBpm;
                     const bpmChangeLine = song.lines.find(l => l.trim().toUpperCase().startsWith('#BPMCHANGE'));
@@ -195,7 +204,6 @@
                         if (parts[1]) myBpm = parseFloat(parts[1]);
                     }
 
-                    // ヘッダ生成
                     outputLines.push(`TITLE:${songTitle}`);
                     outputLines.push(`SUBTITLE:${subTitle}`);
                     outputLines.push(`BPM:${myBpm}`);
@@ -207,10 +215,10 @@
                     outputLines.push(`GENRE:${genre}`);
                     outputLines.push(`DEMOSTART:`);
                     outputLines.push(``);
-                    outputLines.push(`COURSE:Oni`);
-                    outputLines.push(`LEVEL:10`);
+                    outputLines.push(`COURSE:${courseStr}`);
+                    outputLines.push(`LEVEL:${levelStr}`);
                     
-                    // 風船割り当て
+                    // 風船処理
                     const balloonCount = countBalloons(song.lines);
                     if (balloonCount > 0) {
                         const myBalloons = globalHeader.balloon.slice(balloonIndex, balloonIndex + balloonCount);
@@ -224,18 +232,12 @@
                     outputLines.push(`SCOREDIFF:${scoreDiff}`);
                     outputLines.push(``);
 
-                    // 譜面データ追加（EXAM除去フィルタ適用）
                     song.lines.forEach(l => {
-                        if (shouldKeepLine(l)) {
-                            outputLines.push(l);
-                        } else {
-                            // デバッグ用にコンソールには出す
-                            // console.log("Removed:", l); 
-                        }
+                        if (shouldKeepLine(l)) outputLines.push(l);
                     });
                 }
 
-                // 次の曲のためにBPM更新
+                // 次曲のためBPM更新
                 song.lines.forEach(l => {
                     if (l.trim().toUpperCase().startsWith('#BPMCHANGE')) {
                          const parts = l.trim().split(/\s+/);
@@ -243,10 +245,11 @@
                     }
                 });
 
-                // ZIPへ追加
+                // 保存
                 const safeTitle = songTitle.replace(/[\\/*?:"<>|]/g, "_") || "Untitled";
-                zip.file(`${i+1}_${safeTitle}.tja`, outputLines.join("\n"));
-                log(`追加: ${safeTitle}`, 'success');
+                const safeDifficulty = (courseStr === "Edit" || courseStr === "4") ? "_Ura" : ""; // 裏譜面ならファイル名に付ける
+                zip.file(`${i+1}_${safeTitle}${safeDifficulty}.tja`, outputLines.join("\n"));
+                log(`追加: ${safeTitle} (${courseStr} ★${levelStr})`, 'success');
             }
 
             const content = await zip.generateAsync({type:"blob"});
@@ -268,7 +271,6 @@
         }
     });
 
-    // ファイル読み込み
     function readFileAsText(file, encoding) {
         return new Promise((resolve, reject) => {
             const reader = new FileReader();
@@ -278,28 +280,32 @@
         });
     }
 
-    // NEXTSONG引数パース
     function parseNextSong(line) {
+        // カンマ区切りで分割し、空白を除去
         const content = line.replace(/^#NEXTSONG\s+/i, '');
         return content.split(',').map(s => s.trim());
     }
 
-    // 保存するかどうかの判定（EXAM削除ロジック）
+    function mapCourseId(idStr) {
+        // IDをテキスト(Oniなど)に変換
+        const id = parseInt(idStr);
+        switch(id) {
+            case 0: return "Easy";
+            case 1: return "Normal";
+            case 2: return "Hard";
+            case 3: return "Oni";
+            case 4: return "Edit";
+            default: return "Oni"; // 不明時はOni
+        }
+    }
+
     function shouldKeepLine(line) {
         const t = line.trim().toUpperCase();
-        
-        // 削除対象1: EXAMから始まる行 (例: EXAM1:jg,100)
-        if (t.startsWith('EXAM')) return false;
-
-        // 削除対象2: LEVELHOLD (段位ゲージ維持コマンド)
-        if (t.startsWith('#LEVELHOLD')) return false;
-
-        // その他の段位用コマンドがあればここに追加可能
-        
+        if (t.startsWith('EXAM')) return false;      // EXAM削除
+        if (t.startsWith('#LEVELHOLD')) return false; // LEVELHOLD削除
         return true;
     }
 
-    // 風船カウント
     function countBalloons(lines) {
         let count = 0;
         let isBody = false;
