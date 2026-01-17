@@ -73,4 +73,92 @@
         if (e.target.files.length > 0) {
             selectedFile = e.target.files[0];
             fileNameDisplay.textContent = `選択中: ${selectedFile.name}`;
-            process
+            processBtn.style.display = "block";
+            statusDiv.textContent = "";
+        }
+    });
+
+    processBtn.addEventListener('click', async () => {
+        if (!selectedFile) return;
+
+        statusDiv.textContent = "処理中...";
+        processBtn.disabled = true;
+
+        try {
+            // ★ここを Shift-JIS に固定しました
+            let text = await readFileAsText(selectedFile, 'shift-jis');
+
+            const zip = new JSZip();
+            const lines = text.split(/\r?\n/);
+            
+            let currentBuffer = [];
+            let currentTitle = "NoTitle";
+            let songCount = 0;
+            let fileCount = 1;
+
+            for (let line of lines) {
+                // BOM対策
+                if (line.charCodeAt(0) === 0xFEFF) {
+                    line = line.substr(1);
+                }
+
+                if (line.trim().toUpperCase().startsWith("TITLE:")) {
+                    if (currentBuffer.length > 0) {
+                        addToZip(zip, fileCount, currentTitle, currentBuffer);
+                        fileCount++;
+                        currentBuffer = [];
+                    }
+                    const match = line.match(/TITLE:(.*)/i);
+                    currentTitle = match ? match[1].trim() : `Song_${fileCount}`;
+                }
+                currentBuffer.push(line);
+            }
+            
+            if (currentBuffer.length > 0) {
+                addToZip(zip, fileCount, currentTitle, currentBuffer);
+                songCount = fileCount;
+            }
+
+            if (songCount <= 1 && !currentTitle) {
+                throw new Error("TITLEタグが見つかりませんでした。");
+            }
+
+            const content = await zip.generateAsync({type:"blob"});
+            const downloadLink = document.createElement("a");
+            downloadLink.href = URL.createObjectURL(content);
+            const baseName = selectedFile.name.replace(/\.[^/.]+$/, "");
+            downloadLink.download = `${baseName}_split.zip`;
+            document.body.appendChild(downloadLink);
+            downloadLink.click();
+            document.body.removeChild(downloadLink);
+
+            statusDiv.textContent = `完了！ ${songCount}曲をZIPでダウンロードしました。`;
+            statusDiv.style.color = "#2f855a";
+
+        } catch (err) {
+            console.error(err);
+            statusDiv.textContent = `エラー: ${err.message}`;
+            statusDiv.style.color = "#c53030";
+        } finally {
+            processBtn.disabled = false;
+        }
+    });
+
+    function readFileAsText(file, encoding) {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = (e) => resolve(e.target.result);
+            reader.onerror = (e) => reject(e);
+            reader.readAsText(file, encoding);
+        });
+    }
+
+    function addToZip(zip, index, title, lines) {
+        let safeTitle = title.replace(/[\\/*?:"<>|]/g, "_");
+        if (!safeTitle || safeTitle.trim() === "") safeTitle = "Untitled";
+        const filename = `${index}_${safeTitle}.tja`;
+        zip.file(filename, lines.join("\n"));
+    }
+</script>
+</body>
+</html>
