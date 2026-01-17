@@ -3,249 +3,278 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>TJA Decomposition Tool (Folder & Audio Support)</title>
+    <title>段位フォルダ分割ツール</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <style>
-        body { font-family: "Helvetica Neue", Arial, sans-serif; max-width: 900px; margin: 0 auto; padding: 20px; color: #333; background-color: #f4f6f8; line-height: 1.6; }
-        .container { background-color: white; padding: 2.5rem; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
-        h1 { color: #2d3748; margin-bottom: 0.5rem; text-align: center; }
-        p.desc { text-align: center; color: #718096; margin-bottom: 2rem; font-size: 0.95rem; }
-        
-        /* ドラッグ＆ドロップエリアのスタイル */
-        #drop-zone {
-            padding: 3rem; 
-            border: 3px dashed #cbd5e0; 
-            border-radius: 12px; 
-            background-color: #f8fafc; 
-            text-align: center; 
-            transition: all 0.3s;
-            cursor: pointer;
-            margin-bottom: 20px;
+        body {
+            font-family: "Helvetica Neue", Arial, sans-serif;
+            background-color: #f4f6f8;
+            color: #333;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
         }
-        #drop-zone.dragover { border-color: #4299e1; background-color: #ebf8ff; transform: scale(1.02); }
-        #drop-zone h3 { margin-top: 0; color: #4a5568; }
-        #drop-zone p { color: #718096; }
+        .card {
+            background: white;
+            width: 100%;
+            max-width: 600px;
+            padding: 2rem;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+            text-align: center;
+        }
+        h1 {
+            font-size: 1.5rem;
+            margin-bottom: 1.5rem;
+            color: #2d3748;
+        }
+
+        /* 1. ファイル選択ボタンのスタイル */
+        .file-select-wrapper {
+            margin-bottom: 1.5rem;
+        }
+        input[type="file"] {
+            display: none; /* デフォルトのフォームは隠す */
+        }
+        .btn-select {
+            display: inline-block;
+            padding: 12px 24px;
+            font-size: 1rem;
+            font-weight: bold;
+            color: #fff;
+            background-color: #4a5568;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        .btn-select:hover {
+            background-color: #2d3748;
+        }
+
+        /* 2. 選択したファイル情報の表示場所 */
+        #file-info-area {
+            background-color: #edf2f7;
+            padding: 1rem;
+            border-radius: 6px;
+            margin-bottom: 1.5rem;
+            color: #4a5568;
+            font-size: 0.9rem;
+            min-height: 1.5em;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+        }
+        .status-ready { color: #38a169; font-weight: bold; }
+        .status-error { color: #e53e3e; font-weight: bold; }
+
+        /* 3. 実行ボタン */
+        #run-btn {
+            width: 100%;
+            padding: 15px;
+            font-size: 1.1rem;
+            font-weight: bold;
+            color: white;
+            background-color: #3182ce;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: background-color 0.2s;
+            opacity: 0.5;
+            pointer-events: none; /* 最初は押せない */
+        }
+        #run-btn.active {
+            opacity: 1;
+            pointer-events: auto;
+        }
+        #run-btn:hover {
+            background-color: #2b6cb0;
+        }
 
         /* ログエリア */
-        #logArea {
-            margin-top: 2rem; padding: 1rem; background-color: #1a202c; color: #e2e8f0;
-            border-radius: 6px; font-family: 'Consolas', monospace; font-size: 0.85rem;
-            max-height: 400px; overflow-y: auto; text-align: left;
-            box-shadow: inset 0 0 10px rgba(0,0,0,0.5);
+        #log {
+            margin-top: 20px;
+            font-size: 0.8rem;
+            color: #718096;
+            text-align: left;
+            white-space: pre-wrap;
+            max-height: 150px;
+            overflow-y: auto;
+            border-top: 1px solid #e2e8f0;
+            padding-top: 10px;
         }
-        .log-info { color: #63b3ed; border-bottom: 1px solid #2d3748; padding: 2px 0; }
-        .log-success { color: #68d391; font-weight: bold; padding: 2px 0; }
-        .log-warn { color: #f6e05e; padding: 2px 0; }
-        .log-error { color: #fc8181; font-weight: bold; padding: 2px 0; }
-
-        .footer { margin-top: 2rem; font-size: 0.8rem; color: #a0aec0; text-align: center; }
     </style>
 </head>
 <body>
 
-<div class="container">
-    <h1>段位フォルダ分割＆パッケージ化ツール</h1>
-    <p class="desc">
-        段位のフォルダごとドラッグ＆ドロップしてください。<br>
-        1曲目(表紙)を除去し、TNDE/OpenTaiko形式を解析して音声ファイルと共にZIP化します。
-    </p>
-    
-    <div id="drop-zone">
-        <h3>ここにフォルダをドロップ</h3>
-        <p>※ .tjaファイルと音声ファイル(.ogg/.wav)が入ったフォルダ</p>
+<div class="card">
+    <h1>段位フォルダ分割・生成ツール</h1>
+
+    <div class="file-select-wrapper">
+        <label for="folderInput" class="btn-select">📂 段位フォルダを選択</label>
+        <input type="file" id="folderInput" webkitdirectory directory multiple>
     </div>
 
-    <div id="logArea">待機中...</div>
+    <div id="file-info-area">
+        ファイルが選択されていません
+    </div>
+
+    <button id="run-btn">ファイルを分解してフォルダを生成 (ZIP)</button>
+
+    <div id="log"></div>
 </div>
 
-<div class="footer">Powered by JSZip & TJA Logic</div>
-
 <script>
-    const dropZone = document.getElementById('drop-zone');
-    const logArea = document.getElementById('logArea');
+    // 要素の取得
+    const folderInput = document.getElementById('folderInput');
+    const fileInfoArea = document.getElementById('file-info-area');
+    const runBtn = document.getElementById('run-btn');
+    const logDiv = document.getElementById('log');
 
-    // --- ログ出力機能 ---
-    function log(msg, type = 'info') {
-        const div = document.createElement('div');
-        div.className = `log-${type}`;
-        const time = new Date().toLocaleTimeString();
-        div.textContent = `[${time}] ${msg}`;
-        logArea.appendChild(div);
-        logArea.scrollTop = logArea.scrollHeight;
+    let selectedFiles = [];
+    let targetTjaFile = null;
+    let filesMap = new Map();
+
+    // ログ機能
+    function log(msg) {
+        logDiv.textContent = `> ${msg}\n` + logDiv.textContent;
     }
 
-    // --- ドラッグ＆ドロップ イベント ---
-    dropZone.addEventListener('dragover', (e) => {
-        e.preventDefault();
-        dropZone.classList.add('dragover');
-    });
-
-    dropZone.addEventListener('dragleave', () => {
-        dropZone.classList.remove('dragover');
-    });
-
-    dropZone.addEventListener('drop', async (e) => {
-        e.preventDefault();
-        dropZone.classList.remove('dragover');
+    // --- 1. ファイル選択時の処理 ---
+    folderInput.addEventListener('change', (e) => {
+        selectedFiles = Array.from(e.target.files);
+        filesMap.clear();
+        targetTjaFile = null;
         
-        const items = e.dataTransfer.items;
-        if (!items || items.length === 0) return;
-
-        logArea.innerHTML = ''; // ログリセット
-        log("データを受け取りました。ファイル走査を開始します...", 'info');
-
-        try {
-            await handleFolderDrop(items);
-        } catch (err) {
-            console.error(err);
-            log(`予期せぬエラー: ${err.message}`, 'error');
-        }
-    });
-
-    // --- メイン処理フロー ---
-    async function handleFolderDrop(items) {
-        const filesMap = new Map(); // ファイル名 -> Fileオブジェクト
-        
-        // 1. ファイルを再帰的に取得
-        const entries = [];
-        for (let i = 0; i < items.length; i++) {
-            const entry = items[i].webkitGetAsEntry ? items[i].webkitGetAsEntry() : null;
-            if (entry) entries.push(entry);
-        }
-        await traverseFileTree(entries, filesMap);
-
-        // 2. TJAファイルを探す
-        let tjaFile = null;
-        for (const [name, file] of filesMap) {
-            if (name.toLowerCase().endsWith('.tja')) {
-                tjaFile = file;
-                break;
-            }
-        }
-
-        if (!tjaFile) {
-            log("エラー: フォルダ内に .tja ファイルが見つかりませんでした。", 'error');
+        if (selectedFiles.length === 0) {
+            fileInfoArea.textContent = "ファイルが選択されていません";
+            runBtn.classList.remove('active');
             return;
         }
 
-        log(`TJAファイルを検出: ${tjaFile.name}`, 'success');
-        
-        // 3. TJA読み込みと解析実行
-        await processTjaAndZip(tjaFile, filesMap);
-    }
-
-    // フォルダ再帰探索
-    async function traverseFileTree(entries, filesMap) {
-        for (const entry of entries) {
-            if (entry.isFile) {
-                const file = await new Promise((resolve) => entry.file(resolve));
-                // ファイル名重複時は上書きされるが、通常段位フォルダなら問題ない想定
-                filesMap.set(file.name, file);
-            } else if (entry.isDirectory) {
-                const dirReader = entry.createReader();
-                const newEntries = await new Promise((resolve) => dirReader.readEntries(resolve));
-                await traverseFileTree(newEntries, filesMap);
+        // ファイルのマッピングとTJA探索
+        let tjaCount = 0;
+        selectedFiles.forEach(file => {
+            filesMap.set(file.name, file); // ファイル名でマップ化
+            if (file.name.toLowerCase().endsWith('.tja')) {
+                targetTjaFile = file;
+                tjaCount++;
             }
-        }
-    }
+        });
 
-    // --- TJA解析＆ZIP作成処理 ---
+        // UI更新
+        if (targetTjaFile) {
+            fileInfoArea.innerHTML = `
+                <div>選択フォルダ内のファイル数: <strong>${selectedFiles.length}</strong></div>
+                <div class="status-ready">検出TJA: ${targetTjaFile.name}</div>
+            `;
+            runBtn.classList.add('active'); // ボタンを有効化
+            log(`準備完了: ${targetTjaFile.name} を検出しました。`);
+        } else {
+            fileInfoArea.innerHTML = `
+                <div>ファイル数: ${selectedFiles.length}</div>
+                <div class="status-error">エラー: .tjaファイルが見つかりません</div>
+            `;
+            runBtn.classList.remove('active');
+            log("エラー: 選択されたフォルダ内に .tja ファイルがありません。");
+        }
+    });
+
+    // --- 2. 実行ボタン押下時の処理 ---
+    runBtn.addEventListener('click', async () => {
+        if (!targetTjaFile) return;
+
+        runBtn.disabled = true;
+        runBtn.textContent = "処理中...";
+        log("処理を開始します...");
+
+        try {
+            await processTjaAndZip(targetTjaFile, filesMap);
+            runBtn.textContent = "完了！";
+        } catch (err) {
+            console.error(err);
+            log(`エラー発生: ${err.message}`);
+            runBtn.textContent = "エラー発生";
+        } finally {
+            setTimeout(() => {
+                runBtn.disabled = false;
+                runBtn.textContent = "ファイルを分解してフォルダを生成 (ZIP)";
+            }, 3000);
+        }
+    });
+
+    // --- 3. ロジック本体 (TJA解析・分割・ZIP化) ---
     async function processTjaAndZip(tjaFile, filesMap) {
-        log("TJAファイルの読み込み中...", 'info');
-        
-        // 文字コード判定 (Shift-JISトライ -> 失敗ならUTF-8)
+        // 文字コード読み込み (Shift-JIS優先)
         let text = await readFileAsText(tjaFile, 'shift-jis');
+        // 文字化け判定（TITLEなどが読めない場合UTF-8で再試行）
         if (!text.includes('TITLE:') && !text.includes('title:') && !text.includes('#NEXTSONG')) {
-            log("Shift-JISでの読み込みに違和感があるため、UTF-8で再試行します。", 'warn');
+            log("UTF-8で再読み込みします...");
             text = await readFileAsText(tjaFile, 'utf-8');
         }
 
         const lines = text.split(/\r?\n/);
         const zip = new JSZip();
 
-        // 曲のブロック分け
+        // 曲の分割
         let songs = [];
         let currentSong = { lines: [], nextSongTag: "" };
-        let globalHeaderLines = []; // 最初の共通ヘッダ(BALLOONなど)
-        let balloonData = []; // BALLOON: の数値配列
-        
+        let balloonData = [];
         let isGlobalSection = true;
 
-        // 行ごとの解析
         for (let line of lines) {
-            // BOM除去
-            if (line.charCodeAt(0) === 0xFEFF) line = line.substr(1);
+            if (line.charCodeAt(0) === 0xFEFF) line = line.substr(1); // BOM削除
             const trimLine = line.trim();
             const upperLine = trimLine.toUpperCase();
 
-            // BALLOON情報の抽出(グローバル領域にある場合)
+            // グローバル領域のBALLOON取得
             if (isGlobalSection && upperLine.startsWith('BALLOON:')) {
                 const val = trimLine.substring(8).trim();
-                if (val) {
-                    // 全角カンマも考慮して分割
-                    balloonData = val.split(/[,、]/).map(n => parseInt(n.trim()) || 0);
-                    log(`BALLOONデータ抽出: ${balloonData.length}個の風船定義を発見`, 'info');
-                }
+                if(val) balloonData = val.split(/[,、]/).map(n => parseInt(n.trim()) || 0);
             }
-            
-            // #START 以降はグローバル領域ではない
-            if (upperLine.startsWith('#START')) {
-                isGlobalSection = false;
-            }
+            if (upperLine.startsWith('#START')) isGlobalSection = false;
 
-            // #NEXTSONG で分割
+            // #NEXTSONGで分割
             if (upperLine.startsWith('#NEXTSONG')) {
                 songs.push(currentSong);
                 currentSong = { lines: [], nextSongTag: trimLine };
-                isGlobalSection = false; 
+                isGlobalSection = false;
             } else {
                 currentSong.lines.push(line);
             }
         }
-        // 最後の曲を追加
         if (currentSong.lines.length > 0) songs.push(currentSong);
 
-        log(`セクション数: ${songs.length} (イントロ含む)`, 'info');
-
-        // --- データ加工とZIP格納 ---
-        
-        // グローバルBALLOONのインデックス管理用
+        // --- イントロ(1曲目)の処理 ---
+        // イントロは出力しないが、消費された風船とBPM情報は引き継ぐ
         let balloonIndex = 0;
-        let currentBpm = 0; // BPM継承用
-        let successCount = 0;
+        let currentBpm = 0;
 
-        // 曲ごとのループ (i=0はイントロ/表紙なので、i=1から開始してイントロを削除)
-        // ※ただし、i=0の中にBPM定義などがある場合は取得しておく必要がある
-        
-        // まずi=0(イントロ)を解析して初期BPMを取得（出力はしない）
         if (songs.length > 0) {
-            // イントロの風船使用数を計算して、インデックスを進める（イントロ分の風船を消費）
-            const introBalloonCount = countBalloons(songs[0].lines);
-            balloonIndex += introBalloonCount;
-            
+            const intro = songs[0];
             // 初期BPM取得
-            songs[0].lines.forEach(l => {
-                if(l.trim().toUpperCase().startsWith('BPM:')) {
-                    currentBpm = parseFloat(l.split(':')[1]);
-                }
+            intro.lines.forEach(l => {
+                if (l.trim().toUpperCase().startsWith('BPM:')) currentBpm = parseFloat(l.split(':')[1]);
             });
-            log(`イントロをスキップしました (消費風船: ${introBalloonCount}, 初期BPM: ${currentBpm})`, 'info');
+            // 風船消費
+            balloonIndex += countBalloons(intro.lines);
         }
 
-        // 本題：2曲目以降の処理
+        // --- 2曲目以降の出力 ---
+        let outputCount = 0;
+
         for (let i = 1; i < songs.length; i++) {
             const song = songs[i];
-            let outputLines = [];
             
-            // #NEXTSONGの引数解析
+            // #NEXTSONG解析 [Title, Sub, Genre, Wave, Init, Diff, Level, Course]
             const args = parseNextSong(song.nextSongTag);
-            // args: [Title, Sub, Genre, Wave, Init, Diff, ArgA, ArgB]
-
-            // 各種メタデータ決定
+            
             let songTitle = args[0] || `Song_${i}`;
             let subTitle = args[1] || "";
             let genre = args[2] || "";
-            let waveFileName = args[3] || ""; // 音声ファイル名
+            let waveFileName = args[3] || "";
             let scoreInit = args[4] || "";
             let scoreDiff = args[5] || "";
             
@@ -254,9 +283,6 @@
             let levelStr = "10";
             if (args.length >= 8) {
                 const valA = parseFloat(args[6]);
-                const valB = parseFloat(args[7]);
-                // OpenTaiko: ArgA=Level(>4), ArgB=CourseID
-                // TNDE: ArgA=CourseID(0-4), ArgB=Level
                 if (valA > 4) { // OpenTaiko
                     levelStr = args[6];
                     courseStr = mapCourseId(args[7]);
@@ -266,124 +292,100 @@
                 }
             }
 
-            // BPM追跡 (BPMCHANGEがあれば更新)
-            let myStartBpm = currentBpm;
-            
-            // TJAヘッダ構築
+            // 出力用TJAの構築
+            let outputLines = [];
             outputLines.push(`TITLE:${songTitle}`);
             if(subTitle) outputLines.push(`SUBTITLE:${subTitle}`);
-            outputLines.push(`BPM:${myStartBpm}`);
+            outputLines.push(`BPM:${currentBpm}`); // 前の曲のBPMを引き継ぐ
             outputLines.push(`WAVE:${waveFileName}`);
-            outputLines.push(`OFFSET:0`); // 必要に応じて調整
+            outputLines.push(`OFFSET:0`);
             outputLines.push(`GENRE:${genre}`);
             outputLines.push(`COURSE:${courseStr}`);
             outputLines.push(`LEVEL:${levelStr}`);
             outputLines.push(`SCOREINIT:${scoreInit}`);
             outputLines.push(`SCOREDIFF:${scoreDiff}`);
-            outputLines.push(`SCOREMODE:2`);
+            outputLines.push(`SCOREMODE:2`); // 真打
 
-            // 風船の割り当て
+            // 風船割り当て
             const needBalloons = countBalloons(song.lines);
             if (needBalloons > 0) {
-                const sliced = balloonData.slice(balloonIndex, balloonIndex + needBalloons);
-                outputLines.push(`BALLOON:${sliced.join(',')}`);
+                const myBalloons = balloonData.slice(balloonIndex, balloonIndex + needBalloons);
+                outputLines.push(`BALLOON:${myBalloons.join(',')}`);
                 balloonIndex += needBalloons;
             } else {
                 outputLines.push(`BALLOON:`);
             }
-            
-            outputLines.push(''); // 空行
+            outputLines.push('');
 
-            // 譜面データ本体の追加 (EXAM除去済み)
+            // 譜面データ (EXAM削除)
             song.lines.forEach(l => {
-                if (shouldKeepLine(l)) outputLines.push(l);
-                
-                // 次の曲のためにBPMを追跡
-                if (l.trim().toUpperCase().startsWith('#BPMCHANGE')) {
-                     const parts = l.trim().split(/\s+/);
-                     if(parts[1]) currentBpm = parseFloat(parts[1]);
+                const t = l.trim().toUpperCase();
+                if (!t.startsWith('EXAM') && !t.startsWith('#LEVELHOLD')) {
+                    outputLines.push(l);
+                }
+                // BPM追跡
+                if (t.startsWith('#BPMCHANGE')) {
+                    const parts = t.split(/\s+/);
+                    if(parts[1]) currentBpm = parseFloat(parts[1]);
                 }
             });
 
-            // --- ZIPへの追加 ---
-            const safeTitle = songTitle.replace(/[\\/*?:"<>|]/g, "_") || `Track_${i}`;
-            // フォルダ名: 1_曲名
-            const folderName = `${i}_${safeTitle}`;
+            // ZIP格納
+            const safeTitle = songTitle.replace(/[\\/*?:"<>|]/g, "_");
+            const folderName = `${i}_${safeTitle}`; // フォルダ名
             const folder = zip.folder(folderName);
 
-            // 1. TJAファイル
-            const safeDiffName = (courseStr === "Edit" || courseStr === "4") ? "_Ura" : "";
-            folder.file(`${safeTitle}${safeDiffName}.tja`, outputLines.join("\n"));
+            // TJA書き出し
+            const safeDiff = (courseStr === "Edit" || courseStr === "4") ? "_Ura" : "";
+            folder.file(`${safeTitle}${safeDiff}.tja`, outputLines.join("\n"));
 
-            // 2. 音声ファイル (ここが新機能)
+            // 音声書き出し
             if (waveFileName) {
-                // パス区切り除去して純粋なファイル名を取得
-                const targetName = waveFileName.split(/[/\\]/).pop();
-                
+                const targetName = waveFileName.split(/[/\\]/).pop(); // パス除去
                 if (filesMap.has(targetName)) {
                     folder.file(targetName, filesMap.get(targetName));
-                    log(`[曲${i}] 音声同梱成功: ${targetName}`, 'info');
+                    log(`[${i}] 音源同梱: ${targetName}`);
                 } else {
-                    log(`[曲${i}] 警告: 指定された音声 '${targetName}' がフォルダ内にありません。`, 'warn');
+                    log(`[${i}] 警告: 音源なし (${targetName})`);
                 }
             }
-
-            successCount++;
+            outputCount++;
         }
 
-        // ZIP生成・ダウンロード
-        if (successCount > 0) {
-            log("ZIPファイルを圧縮中...", 'info');
-            const blob = await zip.generateAsync({type:"blob"});
-            
-            const link = document.createElement('a');
-            link.href = URL.createObjectURL(blob);
-            // 元のフォルダ名などがわからないので適当な名前
-            link.download = "split_dani_pack.zip"; 
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-            
-            log("完了！ダウンロードを開始しました。", 'success');
-        } else {
-            log("出力対象が見つかりませんでした。(曲データがないかエラー)", 'error');
-        }
+        // ZIPダウンロード処理
+        log("ZIPファイルを作成中...");
+        const blob = await zip.generateAsync({type:"blob"});
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = `${tjaFile.name.replace('.tja','')}_split.zip`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        log("ダウンロード完了！");
     }
 
-    // --- ユーティリティ関数群 (既存ロジック流用) ---
-
+    // --- ユーティリティ ---
     function readFileAsText(file, encoding) {
         return new Promise((resolve, reject) => {
             const reader = new FileReader();
-            reader.onload = (e) => resolve(e.target.result);
-            reader.onerror = (e) => reject(e);
+            reader.onload = e => resolve(e.target.result);
+            reader.onerror = e => reject(e);
             reader.readAsText(file, encoding);
         });
     }
 
-    function parseNextSong(line) {
-        // #NEXTSONG 除去してカンマ分割
-        const content = line.replace(/^#NEXTSONG\s+/i, '');
-        return content.split(',').map(s => s.trim());
+    function parseNextSong(tag) {
+        return tag.replace(/^#NEXTSONG\s+/i, '').split(',').map(s => s.trim());
     }
 
-    function mapCourseId(idStr) {
-        const id = parseInt(idStr);
-        switch(id) {
-            case 0: return "Easy";
-            case 1: return "Normal";
-            case 2: return "Hard";
-            case 3: return "Oni";
-            case 4: return "Edit";
-            default: return "Oni";
-        }
-    }
-
-    function shouldKeepLine(line) {
-        const t = line.trim().toUpperCase();
-        if (t.startsWith('EXAM')) return false;      // EXAM削除
-        if (t.startsWith('#LEVELHOLD')) return false; // LEVELHOLD削除
-        return true;
+    function mapCourseId(id) {
+        const i = parseInt(id);
+        if (i === 0) return "Easy";
+        if (i === 1) return "Normal";
+        if (i === 2) return "Hard";
+        if (i === 3) return "Oni";
+        if (i === 4) return "Edit";
+        return "Oni";
     }
 
     function countBalloons(lines) {
@@ -393,19 +395,17 @@
             const t = line.trim().toUpperCase();
             if (t.startsWith('#START')) isBody = true;
             if (t.startsWith('#END')) isBody = false;
-            
             if (isBody) {
-                // コメント除去
-                let cleanLine = line.split('//')[0];
-                if (cleanLine.trim().startsWith('#')) continue; // 命令系は無視
-                for (let char of cleanLine) {
-                    // 7(風船)か9(くす玉)をカウント
-                    if (char === '7' || char === '9') count++;
+                let clean = line.split('//')[0];
+                if (clean.trim().startsWith('#')) continue;
+                for (let c of clean) {
+                    if (c === '7' || c === '9') count++;
                 }
             }
         }
         return count;
     }
 </script>
+
 </body>
 </html>
