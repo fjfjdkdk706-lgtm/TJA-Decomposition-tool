@@ -3,13 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>段位TJA 分割＆再生用修正ツール</title>
+    <title>段位TJA 分割・修正ツール (EXAM削除・完全版)</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <style>
         :root {
             --bg-color: #1e1e1e;
             --card-bg: #2d2d2d;
-            --accent: #4caf50;
+            --accent: #e53935; /* 赤系統に変更(EXAM削除の意思表示) */
             --text-main: #e0e0e0;
             --text-sub: #b0b0b0;
             --log-bg: #121212;
@@ -46,6 +46,9 @@
             color: var(--text-sub);
             line-height: 1.6;
             font-size: 0.95rem;
+            background: #333;
+            padding: 15px;
+            border-radius: 6px;
         }
         .upload-box {
             border: 2px dashed #555;
@@ -54,20 +57,14 @@
             text-align: center;
             cursor: pointer;
             transition: all 0.3s;
-            background: #333;
+            background: #252525;
         }
         .upload-box:hover {
             border-color: var(--accent);
-            background: #3a3a3a;
+            background: #303030;
         }
-        .upload-box p {
-            margin: 0;
-            font-size: 1.1rem;
-            color: #aaa;
-        }
-        .btn-area {
-            margin-top: 25px;
-        }
+        .upload-box p { margin: 0; font-size: 1.1rem; color: #aaa; }
+        
         button {
             width: 100%;
             padding: 15px;
@@ -81,15 +78,11 @@
             transition: 0.2s;
             opacity: 0.5;
             pointer-events: none;
+            margin-top: 25px;
         }
-        button.active {
-            opacity: 1;
-            pointer-events: auto;
-        }
-        button:hover {
-            background-color: #43a047;
-            transform: translateY(-2px);
-        }
+        button.active { opacity: 1; pointer-events: auto; }
+        button:hover { filter: brightness(1.2); transform: translateY(-2px); }
+        
         #log {
             margin-top: 20px;
             background: var(--log-bg);
@@ -106,7 +99,7 @@
         .log-success { color: #a5d6a7; }
         .log-warn { color: #fff59d; }
         .log-err { color: #ef9a9a; }
-        .log-fix { color: #ce93d8; font-weight: bold; } /* 修正箇所の強調 */
+        .log-del { color: #ce93d8; } /* 削除ログ */
     </style>
 </head>
 <body>
@@ -114,23 +107,22 @@
 <div class="container">
     <h1>段位TJA 分割・修正ツール</h1>
     <div class="desc">
-        <p>段位道場のTJAファイルを、通常のシミュレータで再生可能な形式に変換・分割します。</p>
+        <strong>処理内容：</strong>
         <ul>
+            <li>EXAM命令 / LEVELHOLD / DELAY の削除</li>
             <li>#START / #END の自動付与</li>
-            <li>#DELAY (待機命令) の削除</li>
-            <li>BALLOON / KUSUDAMA の正確な再分配</li>
+            <li>BALLOON / KUSUDAMA の厳密なカウントと再分配</li>
+            <li>音声ファイルの同梱とZIP化</li>
         </ul>
     </div>
 
     <div class="upload-box" id="dropZone" onclick="document.getElementById('fileInput').click()">
-        <p>📂 ここをクリックしてフォルダを選択<br><span style="font-size:0.8rem">(またはドラッグ＆ドロップ)</span></p>
+        <p>📂 フォルダを選択 (ドラッグ＆ドロップ可)</p>
         <input type="file" id="fileInput" webkitdirectory directory multiple style="display:none">
     </div>
-    <div id="file-status" style="text-align:center; margin-top:10px; font-weight:bold; color:var(--accent);"></div>
+    <div id="file-status" style="text-align:center; margin-top:10px; font-weight:bold; color:var(--text-main);"></div>
 
-    <div class="btn-area">
-        <button id="runBtn">変換してダウンロード</button>
-    </div>
+    <button id="runBtn">変換してダウンロード</button>
 
     <div id="log">ログ待機中...</div>
 </div>
@@ -144,7 +136,7 @@
     const fileStatus = document.getElementById('file-status');
 
     let targetTjaFile = null;
-    let fileMap = new Map(); // 音源ファイル保持用
+    let fileMap = new Map();
 
     // --- ロギング関数 ---
     function log(msg, type = 'info') {
@@ -157,7 +149,7 @@
 
     // --- ファイル入力処理 ---
     fileInput.addEventListener('change', e => handleFiles(e.target.files));
-    dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.style.borderColor = '#4caf50'; });
+    dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.style.borderColor = '#e53935'; });
     dropZone.addEventListener('dragleave', e => { e.preventDefault(); dropZone.style.borderColor = '#555'; });
     dropZone.addEventListener('drop', e => {
         e.preventDefault();
@@ -219,7 +211,7 @@
     async function processTja() {
         const zip = new JSZip();
         
-        // 1. ファイル読込 (SJIS or UTF8)
+        // 1. ファイル読込
         let text = await readFileContent(targetTjaFile);
         const lines = text.split(/\r?\n/);
 
@@ -235,15 +227,15 @@
             globalBalloons = tempBalloonStr.split(/[,、\s]+/)
                 .map(n => parseInt(n))
                 .filter(n => !isNaN(n));
-            log(`[全体] 風船プール: 合計 ${globalBalloons.length} 個を検出`, 'info');
+            log(`[全体] 風船プール: 合計 ${globalBalloons.length} 個`, 'info');
         }
 
         // 3. セクション分割
         let sections = [];
         let buffer = [];
-        let nextTag = ""; // #NEXTSONG ...
+        let nextTag = "";
 
-        // 最初の行のBOM対策
+        // BOM対策
         if(lines.length > 0 && lines[0].charCodeAt(0) === 0xFEFF) lines[0] = lines[0].substr(1);
 
         for (let line of lines) {
@@ -255,16 +247,15 @@
                 buffer.push(line);
             }
         }
-        sections.push({ lines: buffer, tag: nextTag }); // 最後の曲
+        sections.push({ lines: buffer, tag: nextTag });
 
         // 4. 各曲の処理
         let balloonCursor = 0;
-        let currentBpm = 0; // 曲をまたいで維持されることがあるため
+        let currentBpm = 0;
 
-        // 0番目は表紙(Intro)なので、風船消費だけチェックして出力しない
+        // Intro (0番目)
         if (sections.length > 0) {
             const intro = sections[0];
-            // BPM取得
             intro.lines.forEach(l => {
                 if (l.trim().toUpperCase().startsWith('BPM:')) currentBpm = parseFloat(l.split(':')[1]);
             });
@@ -275,12 +266,11 @@
             }
         }
 
-        // 1番目以降 (実際の曲)
+        // 曲 (1番目以降)
         for (let i = 1; i < sections.length; i++) {
             const section = sections[i];
             const args = parseNextSongArgs(section.tag);
             
-            // パラメータ取得
             const title = args[0] || `Song_${i}`;
             const subTitle = args[1] || "";
             const genre = args[2] || "";
@@ -288,15 +278,14 @@
             const scoreInit = args[4] || "";
             const scoreDiff = args[5] || "";
             
-            // 難易度判定 (簡易)
+            // 難易度判定
             let course = "Oni"; 
             let level = "10";
             if (args.length >= 8) {
                 if (parseFloat(args[6]) > 4) { level = args[6]; course = mapCourse(args[7]); }
                 else { course = mapCourse(args[6]); level = args[7]; }
-            } else {
-                // 引数が足りない場合は前の方の引数で推測
-                if(args[6]) level = args[6];
+            } else if(args[6]) {
+                 level = args[6];
             }
 
             // --- 風船分配 ---
@@ -307,25 +296,32 @@
                     myBalloons.push(globalBalloons[balloonCursor]);
                     balloonCursor++;
                 } else {
-                    myBalloons.push(5); // 不足時のデフォルト
+                    myBalloons.push(5);
                     log(`[${title}] 風船不足: 5を補填`, 'warn');
                 }
             }
-            if(needed > 0) log(`[${title}] 風船割当: ${needed}個 [${myBalloons.join(',')}]`, 'success');
+            if(needed > 0) log(`[${title}] 風船割当: ${needed}個`, 'success');
 
-            // --- 譜面データの修正 (Sanitize) ---
+            // --- 譜面データの修正 (Sanitize & Clean) ---
             let bodyLines = [];
-            let removedDelay = false;
+            let removedCount = 0;
             
             section.lines.forEach(l => {
                 const t = l.trim().toUpperCase();
-                // 不要なコマンドの削除
-                if (t.startsWith('#DELAY')) {
-                    removedDelay = true;
-                    return; // 削除
-                }
-                if (t.startsWith('#START') || t.startsWith('#END')) return; // 後で付け直すので削除
-                if (t.startsWith('BALLOON:')) return; // 個別に書き直すので削除
+                
+                // --- 削除フィルタ ---
+                // 1. 段位専用の待機命令
+                if (t.startsWith('#DELAY')) { removedCount++; return; }
+                
+                // 2. 合格条件 (EXAM) は単曲では不要・エラーの元
+                if (t.startsWith('EXAM')) { removedCount++; return; }
+                
+                // 3. ゲージ維持 (LEVELHOLD) も不要
+                if (t.startsWith('#LEVELHOLD')) { removedCount++; return; }
+
+                // 4. 重複回避のため既存のSTART/END/BALLOONは削除
+                if (t.startsWith('#START') || t.startsWith('#END')) return; 
+                if (t.startsWith('BALLOON:')) return; 
                 
                 // BPM追跡
                 if (t.startsWith('#BPMCHANGE')) {
@@ -336,28 +332,24 @@
                 bodyLines.push(l);
             });
 
-            if(removedDelay) log(`[${title}] 修正: #DELAY を削除しました`, 'fix');
-
             // --- 出力用TJA構築 ---
             let outLines = [];
             outLines.push(`TITLE:${title}`);
             if(subTitle) outLines.push(`SUBTITLE:${subTitle}`);
-            outLines.push(`BPM:${currentBpm}`); // 最新のBPMをセット
+            outLines.push(`BPM:${currentBpm}`);
             outLines.push(`WAVE:${wave}`);
-            outLines.push(`OFFSET:0`); // 単曲化するのでOffsetは0基準(必要なら手動調整)
+            outLines.push(`OFFSET:0`);
             outLines.push(`GENRE:${genre}`);
             outLines.push(`COURSE:${course}`);
             outLines.push(`LEVEL:${level}`);
             outLines.push(`BALLOON:${myBalloons.join(',')}`);
             outLines.push(`SCOREINIT:${scoreInit}`);
             outLines.push(`SCOREDIFF:${scoreDiff}`);
-            outLines.push(`SCOREMODE:2`); // 段位は基本的に2
+            outLines.push(`SCOREMODE:2`);
             outLines.push('');
             
-            // 強制的に #START / #END で囲む
             outLines.push('#START');
             outLines = outLines.concat(bodyLines);
-            // 最後の行が空行でなければ追加
             if (outLines[outLines.length-1].trim() !== "") outLines.push("");
             outLines.push('#END');
 
@@ -371,18 +363,16 @@
             
             // 音源コピー
             if (wave) {
-                // パスが含まれる場合があるのでファイル名だけ抽出
                 const waveFileName = wave.split(/[/\\]/).pop();
                 if (fileMap.has(waveFileName)) {
                     folder.file(waveFileName, fileMap.get(waveFileName));
-                    log(`[${title}] 音源同梱: ${waveFileName}`, 'success');
                 } else {
                     log(`[${title}] 音源未検出: ${waveFileName}`, 'warn');
                 }
             }
         }
 
-        // 5. ダウンロード実行
+        // 5. ダウンロード
         const content = await zip.generateAsync({type:"blob"});
         const link = document.createElement('a');
         link.href = URL.createObjectURL(content);
@@ -390,24 +380,19 @@
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
-        log("ダウンロード完了！", 'info');
+        log("全処理完了。ダウンロードを開始しました。", 'success');
     }
 
-    // --- 補助関数: 強力カウント (命令文などを無視して7/9を数える) ---
+    // --- 補助関数: 強力カウント ---
     function count79(lines) {
         let count = 0;
         for (let line of lines) {
             let trim = line.trim();
             if (!trim) continue;
-            
-            // コメント除去
             let code = trim.split('//')[0].trim();
             if (!code) continue;
-            
-            // ヘッダ(TITLE:)や命令(#BPM)は除外
             if (code.includes(':') || code.startsWith('#')) continue;
             
-            // 文字列中の 7, 9 をカウント
             for (let char of code) {
                 if (char === '7' || char === '9') count++;
             }
@@ -415,22 +400,18 @@
         return count;
     }
 
-    // --- 補助関数: ファイル読み込み (文字コード自動判別フォールバック) ---
+    // --- 補助関数: ファイル読み込み ---
     function readFileContent(file) {
         return new Promise((resolve, reject) => {
             const reader = new FileReader();
             reader.onload = (e) => {
                 const buffer = e.target.result;
-                // まずShift-JISとしてデコードを試みる
                 const decoderSJIS = new TextDecoder('shift-jis');
                 const textSJIS = decoderSJIS.decode(buffer);
                 
-                // 明らかにUTF-8っぽい特徴（TITLEなどが見つからない、文字化け）があるか簡易チェック
-                // 段位ファイルは "TITLE:" か "#NEXTSONG" が必ずあるはず
                 if (textSJIS.includes('TITLE:') || textSJIS.includes('#NEXTSONG') || textSJIS.includes('COURSE:')) {
                     resolve(textSJIS);
                 } else {
-                    // UTF-8で再トライ
                     const decoderUTF8 = new TextDecoder('utf-8');
                     resolve(decoderUTF8.decode(buffer));
                 }
@@ -442,7 +423,6 @@
 
     // --- 補助関数: 引数パース ---
     function parseNextSongArgs(tag) {
-        // 例: #NEXTSONG Title, Sub, Genre, Wave, ScoreInit, ScoreDiff, Level, Course
         const raw = tag.replace(/^#NEXTSONG\s+/i, '');
         return raw.split(',').map(s => s.trim());
     }
