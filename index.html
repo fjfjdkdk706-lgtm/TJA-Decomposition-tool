@@ -3,19 +3,20 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>段位TJA 修正ツール (厳格定義版)</title>
+    <title>段位tja分解ツール</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <style>
         :root {
-            --bg-color: #121212;
-            --card-bg: #1e1e1e;
-            --accent: #ff9800; /* 注意深さのオレンジ */
-            --text-main: #e0e0e0;
-            --text-sub: #b0b0b0;
-            --log-bg: #000000;
+            --bg-color: #f5f5f5;       /* 全体の背景：薄いグレー */
+            --card-bg: #ffffff;        /* カード背景：白 */
+            --accent: #555555;         /* アクセント：濃いグレー */
+            --text-main: #333333;      /* 文字色：黒に近いグレー */
+            --text-sub: #666666;       /* サブ文字色 */
+            --border-color: #dddddd;   /* 枠線 */
+            --log-bg: #f9f9f9;         /* ログ背景 */
         }
         body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            font-family: "Helvetica Neue", Arial, "Hiragino Kaku Gothic ProN", "Hiragino Sans", sans-serif;
             background-color: var(--bg-color);
             color: var(--text-main);
             margin: 0;
@@ -23,98 +24,116 @@
             flex-direction: column;
             align-items: center;
             min-height: 100vh;
-            padding: 20px;
+            padding: 40px 20px;
         }
         .container {
             width: 100%;
-            max-width: 850px;
+            max-width: 800px;
             background: var(--card-bg);
-            padding: 30px;
-            border-radius: 12px;
-            box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+            padding: 40px;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+            border: 1px solid var(--border-color);
         }
         h1 {
-            color: var(--accent);
+            color: var(--text-main);
             text-align: center;
-            margin-bottom: 20px;
-            font-size: 1.8rem;
-            border-bottom: 2px solid #333;
-            padding-bottom: 15px;
-            letter-spacing: 1px;
+            margin-bottom: 30px;
+            font-size: 1.6rem;
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 20px;
+            font-weight: normal;
         }
         .desc {
-            margin-bottom: 20px;
+            margin-bottom: 30px;
             color: var(--text-sub);
-            line-height: 1.6;
+            line-height: 1.8;
             font-size: 0.95rem;
-            background: #252525;
-            padding: 15px;
+            background: #fafafa;
+            padding: 20px;
             border-radius: 6px;
-            border-left: 4px solid var(--accent);
+        }
+        .desc ul {
+            margin: 10px 0 0 0;
+            padding-left: 20px;
         }
         .upload-box {
-            border: 2px dashed #444;
-            border-radius: 8px;
-            padding: 40px;
+            border: 2px dashed #bbbbbb;
+            border-radius: 6px;
+            padding: 50px;
             text-align: center;
             cursor: pointer;
-            transition: all 0.3s;
-            background: #252525;
+            transition: all 0.2s;
+            background: #ffffff;
+            color: var(--text-sub);
         }
         .upload-box:hover {
             border-color: var(--accent);
-            background: #2a2a2a;
+            background: #fdfdfd;
+            color: var(--text-main);
         }
-        .upload-box p { margin: 0; font-size: 1.1rem; color: #aaa; }
+        .upload-box p { margin: 0; font-size: 1.0rem; }
         
         button {
             width: 100%;
-            padding: 15px;
+            padding: 16px;
             background-color: var(--accent);
-            color: #000;
+            color: #ffffff;
             border: none;
             border-radius: 6px;
-            font-size: 1.1rem;
+            font-size: 1.0rem;
             font-weight: bold;
             cursor: pointer;
             transition: 0.2s;
-            opacity: 0.5;
+            opacity: 0.6;
             pointer-events: none;
-            margin-top: 25px;
+            margin-top: 30px;
         }
         button.active { opacity: 1; pointer-events: auto; }
-        button:hover { filter: brightness(1.2); transform: translateY(-2px); }
+        button:hover { background-color: #333333; }
         
+        #file-status {
+            text-align: center;
+            margin-top: 15px;
+            font-weight: bold;
+            color: var(--text-main);
+            min-height: 1.5em;
+        }
+
         #log {
-            margin-top: 20px;
+            margin-top: 30px;
             background: var(--log-bg);
             padding: 15px;
-            border-radius: 6px;
-            height: 350px;
+            border-radius: 4px;
+            height: 300px;
             overflow-y: auto;
             font-family: Consolas, monospace;
-            font-size: 0.9rem;
+            font-size: 0.85rem;
             white-space: pre-wrap;
-            border: 1px solid #333;
+            border: 1px solid var(--border-color);
+            color: #444;
         }
-        .log-info { color: #81d4fa; }
-        .log-success { color: #a5d6a7; }
-        .log-warn { color: #fff59d; }
-        .log-err { color: #ef9a9a; }
-        .log-fix { color: #ce93d8; font-weight: bold; }
+        /* ログの色分け（控えめに） */
+        .log-info { color: #444; }
+        .log-success { color: #2e7d32; }
+        .log-warn { color: #f57f17; }
+        .log-err { color: #c62828; }
+        .log-fix { color: #6a1b9a; font-weight: bold; }
     </style>
 </head>
 <body>
 
 <div class="container">
-    <h1>段位TJA 修正ツール (仕様確定版)</h1>
+    <h1>段位tja分解ツール</h1>
     <div class="desc">
-        <strong>処理内容：</strong>
+        段位道場のTJAファイルを、通常のシミュレータで再生可能な単曲形式に変換・分割します。<br>
+        <strong>主な機能：</strong>
         <ul>
-            <li><strong>#NEXTSONGの厳格読み込み:</strong> 2番目をSUBTITLE、4番目をWAVEとして処理</li>
-            <li><strong>DELAY → OFFSET変換:</strong> #DELAY値を合計し、OFFSET（マイナス値）へ変換</li>
-            <li><strong>不要命令の削除:</strong> EXAM, LEVELHOLD, SECTION, DELAY を完全除去</li>
-            <li><strong>基本補正:</strong> #START/#END付与、風船の再分配</li>
+            <li>TJAファイルの分割と音声ファイルの自動同梱</li>
+            <li>SUBTITLE / WAVE欄の自動判別と修正</li>
+            <li>DELAY値をOFFSETに変換（ズレ補正）</li>
+            <li>不要な命令（EXAM, LEVELHOLD等）の削除</li>
+            <li>風船連打数の再分配</li>
         </ul>
     </div>
 
@@ -122,11 +141,11 @@
         <p>📂 フォルダを選択 (ドラッグ＆ドロップ可)</p>
         <input type="file" id="fileInput" webkitdirectory directory multiple style="display:none">
     </div>
-    <div id="file-status" style="text-align:center; margin-top:10px; font-weight:bold; color:var(--text-main);"></div>
+    <div id="file-status"></div>
 
     <button id="runBtn">変換してダウンロード</button>
 
-    <div id="log">ログ待機中...</div>
+    <div id="log">待機中...</div>
 </div>
 
 <script>
@@ -151,11 +170,11 @@
 
     // --- ファイル入力処理 ---
     fileInput.addEventListener('change', e => handleFiles(e.target.files));
-    dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.style.borderColor = '#ff9800'; });
-    dropZone.addEventListener('dragleave', e => { e.preventDefault(); dropZone.style.borderColor = '#444'; });
+    dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.style.borderColor = '#555'; });
+    dropZone.addEventListener('dragleave', e => { e.preventDefault(); dropZone.style.borderColor = '#bbb'; });
     dropZone.addEventListener('drop', e => {
         e.preventDefault();
-        dropZone.style.borderColor = '#444';
+        dropZone.style.borderColor = '#bbb';
         handleFiles(e.dataTransfer.files);
     });
 
@@ -179,7 +198,7 @@
         });
 
         if (targetTjaFile) {
-            fileStatus.textContent = `読込: ${targetTjaFile.name} (他 ${fileList.length - 1} ファイル)`;
+            fileStatus.textContent = `読込: ${targetTjaFile.name}`;
             log(`[準備] ターゲットTJA: ${targetTjaFile.name}`, 'info');
             if(tjaCount > 1) log(`[注意] 複数のTJAが見つかりました。${targetTjaFile.name} を処理します。`, 'warn');
             runBtn.classList.add('active');
@@ -273,9 +292,7 @@
             const section = sections[i];
             const args = parseNextSongArgs(section.tag);
             
-            // --- 引数マッピング (ユーザー定義順) ---
             // #NEXTSONG [曲名],[SUBTITLE],[ジャンル],[音源],[初項],[公差],[レベル],[難易度]
-            
             const title = args[0] || `Song_${i}`;
             let subTitle = args[1] || "";     // 2番目: SUBTITLE
             const genre = args[2] || "";      // 3番目: ジャンル
@@ -283,21 +300,15 @@
             const scoreInit = args[4] || "";  // 5番目: 初項
             const scoreDiff = args[5] || "";  // 6番目: 公差
             
-            // SUBTITLEが "--" の場合は空にする
             if (subTitle === "--") subTitle = "";
 
-            // 難易度/レベル処理 (7, 8番目)
             let course = "Oni"; 
             let level = "10";
             if (args.length >= 8) {
-                // 一般的に、数値が小さいほうが難易度(Oni等)、大きいほうがレベル(10等)である場合が多いが
-                // ここでは単純に並び順で処理しつつ、値による安全策をとる
                 if (parseFloat(args[6]) > 4) { 
-                    // 7番目がレベルっぽい場合
                     level = args[6]; 
                     course = mapCourse(args[7]); 
                 } else { 
-                    // 7番目が難易度IDっぽい場合
                     course = mapCourse(args[6]); 
                     level = args[7]; 
                 }
@@ -325,7 +336,7 @@
             section.lines.forEach(l => {
                 const t = l.trim().toUpperCase();
                 
-                // 削除対象フィルタ (EXAM, LEVELHOLD, SECTION, START, END, BALLOON)
+                // 削除対象フィルタ
                 if (t.startsWith('EXAM')) return;
                 if (t.startsWith('#LEVELHOLD')) return;
                 if (t.startsWith('#SECTION')) return;
