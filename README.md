@@ -19,3 +19,7 @@
 ## ライセンス
 
 MIT License
+
+## 使用しているライブラリ
+
+このツールは JSZip (MIT License) を使用しています。
