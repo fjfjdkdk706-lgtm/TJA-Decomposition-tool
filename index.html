@@ -3,126 +3,266 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>TJA Decomposition Tool</title>
+    <title>TJA Decomposition Tool (Pro)</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/chardetng/0.1.0/chardetng.min.js"></script>
     <style>
-        body { font-family: sans-serif; max-width: 640px; margin: 0 auto; padding: 20px; color: #333; background-color: #f4f6f8; }
-        .container { background-color: white; padding: 2rem; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); text-align: center; }
-        h1 { color: #2c3e50; margin-bottom: 10px; }
+        body { font-family: "Helvetica Neue", Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; color: #333; background-color: #f4f6f8; line-height: 1.6; }
+        .container { background-color: white; padding: 2.5rem; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+        h1 { color: #2d3748; margin-bottom: 0.5rem; text-align: center; }
+        p.desc { text-align: center; color: #718096; margin-bottom: 2rem; font-size: 0.95rem; }
         
-        .upload-area { margin: 2rem 0; padding: 1.5rem; border: 2px dashed #cbd5e0; border-radius: 8px; background-color: #f8fafc; }
+        .upload-area { 
+            padding: 2rem; border: 2px dashed #cbd5e0; border-radius: 8px; background-color: #f8fafc; 
+            text-align: center; transition: all 0.2s;
+        }
+        .upload-area:hover { border-color: #4299e1; background-color: #ebf8ff; }
         
         input[type="file"] { display: none; }
         .custom-file-upload {
-            display: inline-block;
-            padding: 10px 20px;
-            cursor: pointer;
-            background-color: #4a5568;
-            color: white;
-            border-radius: 6px;
-            font-weight: bold;
-            transition: background 0.3s;
+            display: inline-block; padding: 12px 24px; cursor: pointer;
+            background-color: #4a5568; color: white; border-radius: 6px; font-weight: bold;
+            transition: background 0.2s;
         }
         .custom-file-upload:hover { background-color: #2d3748; }
 
-        #fileNameDisplay { margin: 15px 0; font-weight: bold; color: #3182ce; min-height: 1.5em; }
+        #fileNameDisplay { margin: 1rem 0; font-weight: bold; color: #3182ce; min-height: 1.5em; }
 
         #processBtn {
-            background-color: #3182ce; color: white; border: none; padding: 12px 30px; 
+            background-color: #3182ce; color: white; border: none; padding: 14px 40px; 
             font-size: 1.1rem; font-weight: bold; border-radius: 6px; cursor: pointer; 
-            transition: background-color 0.2s; width: 100%; max-width: 300px;
-            display: none;
-            margin: 0 auto;
+            transition: background-color 0.2s; display: none; margin: 10px auto;
         }
         #processBtn:hover { background-color: #2b6cb0; }
 
-        #status { margin-top: 1.5rem; font-weight: bold; }
-        .footer { margin-top: 2rem; font-size: 0.8rem; color: #718096; text-align: center; }
+        #logArea {
+            margin-top: 2rem; padding: 1rem; background-color: #2d3748; color: #a0aec0;
+            border-radius: 6px; font-family: monospace; font-size: 0.85rem;
+            max-height: 300px; overflow-y: auto; text-align: left; display: none;
+        }
+        .log-info { color: #63b3ed; }
+        .log-success { color: #68d391; }
+        .log-warn { color: #f6e05e; }
+        .log-error { color: #fc8181; }
+
+        .footer { margin-top: 2rem; font-size: 0.8rem; color: #a0aec0; text-align: center; }
     </style>
 </head>
 <body>
 
 <div class="container">
     <h1>TJA Decomposition Tool</h1>
-    <p>段位TJAファイルを選択し、曲ごとに分解します。</p>
+    <p class="desc">段位TJAの <code>#NEXTSONG</code> を解析し、ヘッダと風船を自動生成して分割します。</p>
     
     <div class="upload-area">
-        <label for="fileInput" class="custom-file-upload">📂 ファイルを選択</label>
+        <label for="fileInput" class="custom-file-upload">📂 TJAファイルを選択</label>
         <input type="file" id="fileInput">
-        
         <div id="fileNameDisplay">ファイルが選択されていません</div>
-
-        <button id="processBtn">ファイルを分解</button>
+        <button id="processBtn">分解してダウンロード</button>
     </div>
 
-    <div id="status"></div>
+    <div id="logArea"></div>
 </div>
 
-<div class="footer">
-    Powered by GitHub Pages | TJA-Decomposition-tool
-</div>
+<div class="footer">Powered by GitHub Pages | TJA-Decomposition-tool</div>
 
 <script>
     const fileInput = document.getElementById('fileInput');
     const fileNameDisplay = document.getElementById('fileNameDisplay');
     const processBtn = document.getElementById('processBtn');
-    const statusDiv = document.getElementById('status');
+    const logArea = document.getElementById('logArea');
     let selectedFile = null;
+
+    // ロギング用関数
+    function log(msg, type = 'info') {
+        logArea.style.display = 'block';
+        const div = document.createElement('div');
+        div.className = `log-${type}`;
+        div.textContent = `> ${msg}`;
+        logArea.appendChild(div);
+        logArea.scrollTop = logArea.scrollHeight;
+    }
 
     fileInput.addEventListener('change', (e) => {
         if (e.target.files.length > 0) {
             selectedFile = e.target.files[0];
-            fileNameDisplay.textContent = `選択中: ${selectedFile.name}`;
+            fileNameDisplay.textContent = selectedFile.name;
             processBtn.style.display = "block";
-            statusDiv.textContent = "";
+            logArea.innerHTML = '';
+            log("ファイルが選択されました。準備完了。", 'info');
         }
     });
 
     processBtn.addEventListener('click', async () => {
         if (!selectedFile) return;
-
-        statusDiv.textContent = "処理中...";
         processBtn.disabled = true;
+        log("処理を開始します...", 'info');
 
         try {
-            // ★ここを Shift-JIS に固定しました
+            // 文字コードはShift-JIS優先で読み込む
             let text = await readFileAsText(selectedFile, 'shift-jis');
+            
+            // 明らかに文字化けしている(TITLEタグが見つからない)場合はUTF-8で再試行
+            if (!text.includes('TITLE:') && !text.includes('title:')) {
+                log("Shift-JISでの読み込みに失敗した可能性があります。UTF-8で再試行します。", 'warn');
+                text = await readFileAsText(selectedFile, 'utf-8');
+            }
 
-            const zip = new JSZip();
             const lines = text.split(/\r?\n/);
-            
-            let currentBuffer = [];
-            let currentTitle = "NoTitle";
-            let songCount = 0;
-            let fileCount = 1;
+            const zip = new JSZip();
 
+            // 解析用変数
+            let songs = [];
+            let currentSong = { lines: [], header: {} };
+            let globalHeader = { balloon: [] }; // 段位全体の風船リスト
+            let isGlobalHeader = true; // 最初の曲が始まるまでは共通ヘッダ扱い
+            let balloonIndex = 0; // 風船をどこまで配ったかのカーソル
+
+            // --- 1. まず全行をスキャンして曲ごとにブロック分けする ---
+            
+            // 共通ヘッダの解析（BALLOONなどを取得）
             for (let line of lines) {
-                // BOM対策
-                if (line.charCodeAt(0) === 0xFEFF) {
-                    line = line.substr(1);
-                }
+                // BOM削除
+                if (line.charCodeAt(0) === 0xFEFF) line = line.substr(1);
+                const trimLine = line.trim();
 
-                if (line.trim().toUpperCase().startsWith("TITLE:")) {
-                    if (currentBuffer.length > 0) {
-                        addToZip(zip, fileCount, currentTitle, currentBuffer);
-                        fileCount++;
-                        currentBuffer = [];
+                // BALLOON解析 (例: BALLOON: 10,20,30)
+                if (isGlobalHeader && trimLine.toUpperCase().startsWith('BALLOON:')) {
+                    const val = trimLine.substring(8).trim();
+                    if (val) {
+                        // 全角カンマなども考慮して分割
+                        globalHeader.balloon = val.split(/[,、]/).map(n => parseInt(n.trim()) || 0);
+                        log(`共通風船データを検出: ${globalHeader.balloon.length}個`, 'info');
                     }
-                    const match = line.match(/TITLE:(.*)/i);
-                    currentTitle = match ? match[1].trim() : `Song_${fileCount}`;
                 }
-                currentBuffer.push(line);
+
+                // 曲の区切り検知
+                // #NEXTSONG または (2曲目以降の) TITLE
+                const isNextSong = trimLine.toUpperCase().startsWith('#NEXTSONG');
+                
+                // 最初の曲の開始検知（#START）
+                if (isGlobalHeader && trimLine.toUpperCase().startsWith('#START')) {
+                    isGlobalHeader = false;
+                    // 1曲目の開始。ここまでのヘッダ行は currentSong.lines に入っているはず
+                }
+
+                if (isNextSong) {
+                    // 今までの曲を確定
+                    songs.push(currentSong);
+                    // 次の曲の準備
+                    currentSong = { lines: [], nextSongTag: trimLine };
+                    isGlobalHeader = false;
+                } else {
+                    // 通常行
+                    currentSong.lines.push(line);
+                }
             }
+            // 最後の曲を追加
+            if (currentSong.lines.length > 0) {
+                songs.push(currentSong);
+            }
+
+            log(`合計 ${songs.length} 曲のデータを検出しました。変換を開始します。`, 'info');
+
+
+            // --- 2. 各曲データを加工して出力 ---
             
-            if (currentBuffer.length > 0) {
-                addToZip(zip, fileCount, currentTitle, currentBuffer);
-                songCount = fileCount;
+            let currentBpm = 0; // BPM追跡用
+
+            for (let i = 0; i < songs.length; i++) {
+                const song = songs[i];
+                let outputLines = [];
+                let songTitle = `Song_${i+1}`;
+                let songWave = "";
+                
+                // --- ヘッダ生成ロジック ---
+                
+                if (i === 0) {
+                    // 1曲目: 元のファイルのヘッダをそのまま使うが、余計なCOURSEなどは整理してもいい
+                    // 今回はシンプルに、バッファされた行をそのまま使う（ユーザーの手直し前提）
+                    // ただし、BPMだけは取得しておきたい
+                    song.lines.forEach(l => {
+                        if (l.toUpperCase().startsWith('BPM:')) currentBpm = parseFloat(l.split(':')[1]);
+                        if (l.toUpperCase().startsWith('TITLE:')) songTitle = l.split(':')[1].trim();
+                        if (l.toUpperCase().startsWith('WAVE:')) songWave = l.split(':')[1].trim();
+                    });
+                    
+                    // 1曲目はそのまま出力行とする（テンプレート適用は難しいので）
+                    outputLines = [...song.lines];
+                    
+                    // ただし末尾の余計な空行やコマンドは消すべきかもだが、安全のためそのまま
+
+                } else {
+                    // 2曲目以降: #NEXTSONGタグから情報をパースしてテンプレートにはめる
+                    
+                    // #NEXTSONG Title, Sub, Genre, Wave, ScoreInit, ScoreDiff
+                    const args = parseNextSong(song.nextSongTag);
+                    
+                    songTitle = args[0] || `Song_${i+1}`;
+                    const subTitle = args[1] || "";
+                    const genre = args[2] || "";
+                    songWave = args[3] || "";
+                    const scoreInit = args[4] || "";
+                    const scoreDiff = args[5] || "";
+                    
+                    // BPMを探す（前の曲の終わりか、この曲の冒頭にある #BPMCHANGE を優先）
+                    let myBpm = currentBpm;
+                    const bpmChangeLine = song.lines.find(l => l.trim().toUpperCase().startsWith('#BPMCHANGE'));
+                    if (bpmChangeLine) {
+                        const parts = bpmChangeLine.trim().split(/\s+/);
+                        if (parts[1]) myBpm = parseFloat(parts[1]);
+                    }
+
+                    // テンプレート生成
+                    outputLines.push(`TITLE:${songTitle}`);
+                    outputLines.push(`SUBTITLE:${subTitle}`);
+                    outputLines.push(`BPM:${myBpm}`); // 追跡したBPM
+                    outputLines.push(`WAVE:${songWave}`);
+                    outputLines.push(`OFFSET:`); // WAVE依存のため空欄
+                    outputLines.push(`SONGVOL:100`);
+                    outputLines.push(`SEVOL:100`);
+                    outputLines.push(`SCOREMODE:2`);
+                    outputLines.push(`GENRE:${genre}`);
+                    outputLines.push(`DEMOSTART:`);
+                    outputLines.push(``);
+                    outputLines.push(`COURSE:Oni`); // 段位なので基本Oni
+                    outputLines.push(`LEVEL:10`);   // 仮置き
+                    
+                    // 風船の解析と割り当て
+                    const balloonCount = countBalloons(song.lines);
+                    if (balloonCount > 0) {
+                        const myBalloons = globalHeader.balloon.slice(balloonIndex, balloonIndex + balloonCount);
+                        outputLines.push(`BALLOON:${myBalloons.join(',')}`);
+                        balloonIndex += balloonCount;
+                        log(`[${songTitle}] 風船を ${balloonCount} 個割り当てました (${myBalloons.join(',')})`, 'info');
+                    } else {
+                        outputLines.push(`BALLOON:`);
+                    }
+
+                    outputLines.push(`SCOREINIT:${scoreInit}`);
+                    outputLines.push(`SCOREDIFF:${scoreDiff}`);
+                    outputLines.push(``); // 空行
+                    
+                    // 譜面データ（#NEXTSONG行は除去済みなので、中身だけ）
+                    // ただし、冒頭に #BPMCHANGE 等がある場合があるのでそのまま結合
+                    outputLines = outputLines.concat(song.lines);
+                }
+
+                // 譜面データ内のBPM変更を追跡して、次の曲のために currentBpm を更新しておく
+                song.lines.forEach(l => {
+                    if (l.trim().toUpperCase().startsWith('#BPMCHANGE')) {
+                         const parts = l.trim().split(/\s+/);
+                         if(parts[1]) currentBpm = parseFloat(parts[1]);
+                    }
+                });
+
+                // ZIPに追加
+                const safeTitle = songTitle.replace(/[\\/*?:"<>|]/g, "_") || "Untitled";
+                zip.file(`${i+1}_${safeTitle}.tja`, outputLines.join("\n"));
+                log(`追加: ${i+1}_${safeTitle}.tja`, 'success');
             }
 
-            if (songCount <= 1 && !currentTitle) {
-                throw new Error("TITLEタグが見つかりませんでした。");
-            }
-
+            // ダウンロード処理
             const content = await zip.generateAsync({type:"blob"});
             const downloadLink = document.createElement("a");
             downloadLink.href = URL.createObjectURL(content);
@@ -132,18 +272,17 @@
             downloadLink.click();
             document.body.removeChild(downloadLink);
 
-            statusDiv.textContent = `完了！ ${songCount}曲をZIPでダウンロードしました。`;
-            statusDiv.style.color = "#2f855a";
+            log("完了！ ZIPファイルをダウンロードしました。", 'success');
 
         } catch (err) {
             console.error(err);
-            statusDiv.textContent = `エラー: ${err.message}`;
-            statusDiv.style.color = "#c53030";
+            log(`エラーが発生しました: ${err.message}`, 'error');
         } finally {
             processBtn.disabled = false;
         }
     });
 
+    // テキストファイル読み込み
     function readFileAsText(file, encoding) {
         return new Promise((resolve, reject) => {
             const reader = new FileReader();
@@ -153,11 +292,37 @@
         });
     }
 
-    function addToZip(zip, index, title, lines) {
-        let safeTitle = title.replace(/[\\/*?:"<>|]/g, "_");
-        if (!safeTitle || safeTitle.trim() === "") safeTitle = "Untitled";
-        const filename = `${index}_${safeTitle}.tja`;
-        zip.file(filename, lines.join("\n"));
+    // #NEXTSONGの引数パース
+    // 形式: Title, Sub, Genre, Wave, ScoreInit, ScoreDiff
+    function parseNextSong(line) {
+        // "#NEXTSONG" を削除
+        const content = line.replace(/^#NEXTSONG\s+/i, '');
+        // カンマ区切りだが、タイトルにカンマが含まれるケースは稀として単純分割
+        return content.split(',').map(s => s.trim());
+    }
+
+    // 譜面データ内の風船音符(7, 9)の数を数える
+    function countBalloons(lines) {
+        let count = 0;
+        let isBody = false; // #START以降かどうか
+        for (let line of lines) {
+            if (line.trim().toUpperCase().startsWith('#START')) isBody = true;
+            if (line.trim().toUpperCase().startsWith('#END')) isBody = false;
+            
+            if (isBody) {
+                // 行から数字以外を除去（コマンドなどは無視したいが、簡易的に行ごと見る）
+                // ただしコメント // 以降は無視
+                let cleanLine = line.split('//')[0];
+                // コマンド行(#)は無視
+                if (cleanLine.trim().startsWith('#')) continue;
+                
+                // 7と9をカウント
+                for (let char of cleanLine) {
+                    if (char === '7' || char === '9') count++;
+                }
+            }
+        }
+        return count;
     }
 </script>
 </body>
