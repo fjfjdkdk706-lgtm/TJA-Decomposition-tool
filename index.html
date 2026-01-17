@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TJA Decomposition Tool</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <style>
+        body { font-family: sans-serif; max-width: 640px; margin: 0 auto; padding: 20px; color: #333; background-color: #f4f6f8; }
+        .container { background-color: white; padding: 2rem; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); text-align: center; }
+        h1 { color: #2c3e50; margin-bottom: 10px; }
+        
+        /* ファイル選択エリアのデザイン */
+        .upload-area { margin: 2rem 0; padding: 1.5rem; border: 2px dashed #cbd5e0; border-radius: 8px; background-color: #f8fafc; }
+        
+        /* デフォルトのファイル入力を隠してボタンのみ表示するスタイル */
+        input[type="file"] { display: none; }
+        .custom-file-upload {
+            display: inline-block;
+            padding: 10px 20px;
+            cursor: pointer;
+            background-color: #4a5568;
+            color: white;
+            border-radius: 6px;
+            font-weight: bold;
+            transition: background 0.3s;
+        }
+        .custom-file-upload:hover { background-color: #2d3748; }
+
+        /* ファイル名表示エリア */
+        #fileNameDisplay { margin: 15px 0; font-weight: bold; color: #3182ce; min-height: 1.5em; }
+
+        /* 分解ボタン */
+        #processBtn {
+            background-color: #3182ce; color: white; border: none; padding: 12px 30px; 
+            font-size: 1.1rem; font-weight: bold; border-radius: 6px; cursor: pointer; 
+            transition: background-color 0.2s; width: 100%; max-width: 300px;
+            display: none; /* 初期状態では非表示 */
+            margin: 0 auto;
+        }
+        #processBtn:hover { background-color: #2b6cb0; }
+
+        #status { margin-top: 1.5rem; font-weight: bold; }
+        .footer { margin-top: 2rem; font-size: 0.8rem; color: #718096; text-align: center; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>TJA Decomposition Tool</h1>
+    <p>段位TJAファイルを選択し、曲ごとに分解します。</p>
+    
+    <div class="upload-area">
+        <label for="fileInput" class="custom-file-upload">📂 ファイルを選択</label>
+        <input type="file" id="fileInput" accept=".tja,.txt">
+        
+        <div id="fileNameDisplay">ファイルが選択されていません</div>
+
+        <button id="processBtn">ファイルを分解</button>
+    </div>
+
+    <div id="status"></div>
+</div>
+
+<div class="footer">
+    Powered by GitHub Pages | TJA-Decomposition-tool
+</div>
+
+<script>
+    const fileInput = document.getElementById('fileInput');
+    const fileNameDisplay = document.getElementById('fileNameDisplay');
+    const processBtn = document.getElementById('processBtn');
+    const statusDiv = document.getElementById('status');
+    let selectedFile = null;
+
+    // 1. ファイルが選択された時の処理
+    fileInput.addEventListener('change', (e) => {
+        if (e.target.files.length > 0) {
+            selectedFile = e.target.files[0];
+            // ファイル名を表示
+            fileNameDisplay.textContent = `選択中: ${selectedFile.name}`;
+            // 分解ボタンを表示
+            processBtn.style.display = "block";
+            statusDiv.textContent = "";
+        }
+    });
+
+    // 2. 「ファイルを分解」ボタンが押された時の処理
+    processBtn.addEventListener('click', async () => {
+        if (!selectedFile) return;
+
+        statusDiv.textContent = "処理中...";
+        processBtn.disabled = true;
+
+        try {
+            let text = await readFileAsText(selectedFile, 'utf-8');
+            
+            // 文字コード判定（簡易版）
+            if (!text.includes('TITLE:') && !text.includes('title:')) {
+                text = await readFileAsText(selectedFile, 'shift-jis');
+            }
+
+            const zip = new JSZip();
+            const lines = text.split(/\r?\n/);
+            
+            let currentBuffer = [];
+            let currentTitle = "NoTitle";
+            let songCount = 0;
+            let fileCount = 1;
+
+            // 分割ロジック
+            for (let line of lines) {
+                if (line.trim().toUpperCase().startsWith("TITLE:")) {
+                    if (currentBuffer.length > 0) {
+                        addToZip(zip, fileCount, currentTitle, currentBuffer);
+                        fileCount++;
+                        currentBuffer = [];
+                    }
+                    const match = line.match(/TITLE:(.*)/i);
+                    currentTitle = match ? match[1].trim() : `Song_${fileCount}`;
+                }
+                currentBuffer.push(line);
+            }
+            
+            if (currentBuffer.length > 0) {
+                addToZip(zip, fileCount, currentTitle, currentBuffer);
+                songCount = fileCount;
+            }
+
+            if (songCount <= 1 && !currentTitle) {
+                throw new Error("TITLEタグが見つかりませんでした。");
+            }
+
+            // ZIP生成と自動ダウンロード
+            const content = await zip.generateAsync({type:"blob"});
+            const downloadLink = document.createElement("a");
+            downloadLink.href = URL.createObjectURL(content);
+            // 元のファイル名_split.zip として保存
+            const baseName = selectedFile.name.replace(/\.[^/.]+$/, "");
+            downloadLink.download = `${baseName}_split.zip`;
+            document.body.appendChild(downloadLink);
+            downloadLink.click(); // 自動クリック
+            document.body.removeChild(downloadLink);
+
+            statusDiv.textContent = `完了！ ${songCount}曲をZIPでダウンロードしました。`;
+            statusDiv.style.color = "#2f855a";
+
+        } catch (err) {
+            console.error(err);
+            statusDiv.textContent = `エラー: ${err.message}`;
+            statusDiv.style.color = "#c53030";
+        } finally {
+            processBtn.disabled = false;
+        }
+    });
+
+    function readFileAsText(file, encoding) {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = (e) => resolve(e.target.result);
+            reader.onerror = (e) => reject(e);
+            reader.readAsText(file, encoding);
+        });
+    }
+
+    function addToZip(zip, index, title, lines) {
+        let safeTitle = title.replace(/[\\/*?:"<>|]/g, "_");
+        if (!safeTitle) safeTitle = "Untitled";
+        const filename = `${index}_${safeTitle}.tja`;
+        zip.file(filename, lines.join("\n"));
+    }
+</script>
+</body>
+</html>
