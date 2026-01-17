@@ -2,384 +2,212 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>段位フォルダ分割ツール (BALLOON修正版)</title>
+    <title>段位TJA分割ツール (BALLOON完全追跡版)</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <style>
-        body {
-            font-family: "Helvetica Neue", Arial, sans-serif;
-            background-color: #f4f7f6;
-            color: #333;
-            display: flex;
-            justify-content: center;
-            padding-top: 50px;
-            min-height: 100vh;
-            margin: 0;
-        }
-        .container {
-            background: white;
-            width: 100%;
-            max-width: 720px;
-            padding: 2rem;
-            border-radius: 12px;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
-        }
-        h1 {
-            text-align: center;
-            color: #2c3e50;
-            border-bottom: 2px solid #e2e8f0;
-            padding-bottom: 1rem;
-            margin-bottom: 1.5rem;
-        }
-        p.desc {
-            text-align: center;
-            color: #7f8c8d;
-            font-size: 0.9rem;
-            margin-bottom: 2rem;
-        }
-
-        /* フォルダ選択エリア */
-        .drop-area {
-            border: 3px dashed #bdc3c7;
-            border-radius: 10px;
-            padding: 3rem 1rem;
-            text-align: center;
-            background-color: #fcfcfc;
-            transition: 0.3s;
-            cursor: pointer;
-            margin-bottom: 1.5rem;
-        }
-        .drop-area:hover, .drop-area.dragover {
-            border-color: #3498db;
-            background-color: #ecf8ff;
-        }
-        .drop-area h3 { margin: 0 0 10px 0; color: #7f8c8d; }
-        
-        input[type="file"] { display: none; }
-        
-        .btn-main {
-            display: block;
-            width: 100%;
-            padding: 15px;
-            background-color: #3498db;
-            color: white;
-            font-size: 1.1rem;
-            font-weight: bold;
-            border: none;
-            border-radius: 6px;
-            cursor: pointer;
-            transition: 0.2s;
-            opacity: 0.5;
-            pointer-events: none;
-        }
-        .btn-main.active { opacity: 1; pointer-events: auto; }
-        .btn-main:hover { background-color: #2980b9; }
-
-        #status-msg {
-            text-align: center;
-            font-weight: bold;
-            margin-top: 10px;
-            min-height: 1.5em;
-            color: #2c3e50;
-        }
-
-        /* ログエリア */
-        #log-area {
-            margin-top: 2rem;
-            background: #2c3e50;
-            color: #ecf0f1;
-            padding: 1rem;
-            border-radius: 6px;
-            font-family: monospace;
-            font-size: 0.85rem;
-            height: 250px;
-            overflow-y: auto;
-            white-space: pre-wrap;
-        }
-        .log-warn { color: #f1c40f; }
-        .log-err { color: #e74c3c; font-weight: bold; }
-        .log-ok { color: #2ecc71; }
+        body { font-family: sans-serif; background: #f4f4f9; padding: 20px; display: flex; justify-content: center; }
+        .card { background: white; padding: 2rem; border-radius: 8px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); width: 100%; max-width: 700px; }
+        h1 { margin-top: 0; color: #333; font-size: 1.4rem; border-bottom: 2px solid #ddd; padding-bottom: 10px; }
+        .file-area { border: 2px dashed #aaa; padding: 20px; text-align: center; margin-bottom: 20px; border-radius: 6px; background: #fafafa; cursor: pointer; }
+        .file-area:hover { background: #eef; border-color: #66d; }
+        button { width: 100%; padding: 15px; background: #28a745; color: white; font-weight: bold; border: none; border-radius: 5px; cursor: pointer; font-size: 1.1rem; opacity: 0.5; pointer-events: none; }
+        button.active { opacity: 1; pointer-events: auto; }
+        button:hover { background: #218838; }
+        #log { margin-top: 20px; background: #222; color: #0f0; padding: 10px; height: 300px; overflow-y: scroll; font-family: monospace; font-size: 0.85rem; border-radius: 4px; white-space: pre-wrap; }
+        .err { color: #ff5555; } .warn { color: #ffcc00; }
     </style>
 </head>
 <body>
 
-<div class="container">
-    <h1>段位フォルダ分割・生成ツール</h1>
-    <p class="desc">
-        段位TJAと音源が入ったフォルダを選択してください。<br>
-        BALLOONデータを各曲へ正確に分配し、ZIPパッケージを作成します。
-    </p>
-
-    <div class="drop-area" id="drop-zone">
-        <h3>ここにフォルダをドロップ</h3>
-        <p>またはクリックして選択</p>
-        <input type="file" id="folderInput" webkitdirectory directory multiple>
+<div class="card">
+    <h1>段位TJA 分割・生成ツール (BALLOON厳格モード)</h1>
+    
+    <div class="file-area" onclick="document.getElementById('fileInput').click()">
+        <p>📂 ここをクリックしてフォルダを選択</p>
+        <input type="file" id="fileInput" webkitdirectory directory multiple style="display:none">
+        <div id="file-status" style="font-weight:bold; color:#555;">未選択</div>
     </div>
 
-    <div id="status-msg">待機中...</div>
-    <button id="run-btn" class="btn-main">分割実行 ＆ ダウンロード</button>
-
-    <div id="log-area">ここにログが表示されます</div>
+    <button id="runBtn">実行・ダウンロード</button>
+    <div id="log">ログ待機中...</div>
 </div>
 
 <script>
-    // --- 変数と要素 ---
-    const dropZone = document.getElementById('drop-zone');
-    const folderInput = document.getElementById('folderInput');
-    const statusMsg = document.getElementById('status-msg');
-    const runBtn = document.getElementById('run-btn');
-    const logArea = document.getElementById('log-area');
+    const fileInput = document.getElementById('fileInput');
+    const statusDiv = document.getElementById('file-status');
+    const runBtn = document.getElementById('runBtn');
+    const logDiv = document.getElementById('log');
 
-    let targetTjaFile = null;
-    let filesMap = new Map();
+    let targetTja = null;
+    let fileMap = new Map();
 
-    // --- ログ関数 ---
     function log(msg, type='') {
-        const div = document.createElement('div');
-        div.textContent = `> ${msg}`;
-        if(type === 'warn') div.className = 'log-warn';
-        if(type === 'error') div.className = 'log-err';
-        if(type === 'success') div.className = 'log-ok';
-        logArea.appendChild(div);
-        logArea.scrollTop = logArea.scrollHeight;
+        const line = document.createElement('div');
+        line.textContent = msg;
+        if(type==='err') line.className = 'err';
+        if(type==='warn') line.className = 'warn';
+        logDiv.appendChild(line);
+        logDiv.scrollTop = logDiv.scrollHeight;
     }
 
-    // --- ファイル入力ハンドリング ---
-    
-    // クリックでファイル選択ダイアログを開く
-    dropZone.addEventListener('click', () => folderInput.click());
-
-    // フォルダ選択(input)イベント
-    folderInput.addEventListener('change', (e) => handleFiles(e.target.files));
-
-    // ドラッグ＆ドロップイベント
-    dropZone.addEventListener('dragover', (e) => {
-        e.preventDefault();
-        dropZone.classList.add('dragover');
-    });
-    dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
-    dropZone.addEventListener('drop', (e) => {
-        e.preventDefault();
-        dropZone.classList.remove('dragover');
+    fileInput.addEventListener('change', (e) => {
+        fileMap.clear();
+        targetTja = null;
+        logDiv.innerHTML = '';
         
-        // フォルダドロップ対応 (webkitGetAsEntry)
-        const items = e.dataTransfer.items;
-        if (items) {
-            log("フォルダ解析開始...", 'warn');
-            scanDroppedItems(items);
-        } else {
-            handleFiles(e.dataTransfer.files);
-        }
-    });
+        const files = Array.from(e.target.files);
+        if(files.length === 0) return;
 
-    // --- ファイル処理ロジック ---
-
-    // FileListからの読み込み
-    function handleFiles(fileList) {
-        filesMap.clear();
-        targetTjaFile = null;
-        logArea.innerHTML = '';
-
-        if (fileList.length === 0) return;
-
-        let tjaCount = 0;
-        Array.from(fileList).forEach(f => {
-            filesMap.set(f.name, f);
-            if (f.name.toLowerCase().endsWith('.tja')) {
-                targetTjaFile = f;
-                tjaCount++;
-            }
+        files.forEach(f => {
+            fileMap.set(f.name, f);
+            if(f.name.toLowerCase().endsWith('.tja')) targetTja = f;
         });
 
-        updateUI(tjaCount);
-    }
-
-    // ドロップされたItemの再帰スキャン
-    async function scanDroppedItems(items) {
-        filesMap.clear();
-        targetTjaFile = null;
-        logArea.innerHTML = '';
-        
-        const entries = [];
-        for (let i=0; i<items.length; i++) {
-            const entry = items[i].webkitGetAsEntry ? items[i].webkitGetAsEntry() : null;
-            if (entry) entries.push(entry);
-        }
-
-        await traverseTree(entries);
-        
-        // TJAを探す
-        let tjaCount = 0;
-        for (const [name, file] of filesMap) {
-            if (name.toLowerCase().endsWith('.tja')) {
-                targetTjaFile = file;
-                tjaCount++;
-            }
-        }
-        updateUI(tjaCount);
-    }
-
-    async function traverseTree(entries) {
-        for (const entry of entries) {
-            if (entry.isFile) {
-                const file = await new Promise(r => entry.file(r));
-                filesMap.set(file.name, file);
-            } else if (entry.isDirectory) {
-                const reader = entry.createReader();
-                const newEntries = await new Promise(r => reader.readEntries(r));
-                await traverseTree(newEntries);
-            }
-        }
-    }
-
-    function updateUI(tjaCount) {
-        if (tjaCount > 0) {
-            statusMsg.textContent = `検出: ${targetTjaFile.name}`;
-            statusMsg.style.color = "#27ae60";
-            log(`TJAファイルを発見: ${targetTjaFile.name}`, 'success');
+        if(targetTja) {
+            statusDiv.textContent = `読込対象: ${targetTja.name}`;
+            log(`準備完了: ${targetTja.name} を検出しました。`);
             runBtn.classList.add('active');
         } else {
-            statusMsg.textContent = "エラー: .tjaファイルが見つかりません";
-            statusMsg.style.color = "#c0392b";
-            log("エラー: フォルダ内に .tja ファイルがありません。", 'error');
-            runBtn.classList.remove('active');
-        }
-    }
-
-    // --- 実行ボタン ---
-    runBtn.addEventListener('click', async () => {
-        if (!targetTjaFile) return;
-        runBtn.disabled = true;
-        runBtn.innerText = "処理中...";
-        
-        try {
-            await processTjaAndZip(targetTjaFile);
-            runBtn.innerText = "完了！";
-        } catch (err) {
-            console.error(err);
-            log(`エラー発生: ${err.message}`, 'error');
-            runBtn.innerText = "エラー";
-        } finally {
-            setTimeout(() => {
-                runBtn.disabled = false;
-                runBtn.innerText = "分割実行 ＆ ダウンロード";
-            }, 3000);
+            statusDiv.textContent = "エラー: .tjaファイルが見つかりません";
+            log("エラー: フォルダ内に .tja がありません。", 'err');
         }
     });
 
-    // --- メイン解析処理 (BALLOON修正版) ---
-    async function processTjaAndZip(file) {
-        log("TJA読み込み中...");
-        
-        // 文字コード対策
-        let text = await readFileAsText(file, 'shift-jis');
-        if (!text.includes('TITLE:') && !text.includes('title:') && !text.includes('#NEXTSONG')) {
-            log("UTF-8で再試行します...", 'warn');
-            text = await readFileAsText(file, 'utf-8');
+    runBtn.addEventListener('click', async () => {
+        if(!targetTja) return;
+        runBtn.disabled = true;
+        runBtn.textContent = "処理中...";
+        try {
+            await process();
+            runBtn.textContent = "完了！";
+        } catch(e) {
+            log("致命的エラー: " + e.message, 'err');
+            console.error(e);
+        }
+        setTimeout(() => {
+            runBtn.disabled = false;
+            runBtn.textContent = "実行・ダウンロード";
+        }, 3000);
+    });
+
+    // --- メイン処理 ---
+    async function process() {
+        // 1. ファイル読み込み (Shift-JIS優先)
+        let text = await readFile(targetTja, 'shift-jis');
+        if(!text.includes('TITLE:') && !text.includes('#NEXTSONG')) {
+            log("Shift-JISでの読み込みに失敗、UTF-8で再試行...", 'warn');
+            text = await readFile(targetTja, 'utf-8');
         }
 
         const lines = text.split(/\r?\n/);
-        
-        // --- 1. BALLOONタグの先行全検索 ---
-        // 曲の処理前に、ファイル全体からBALLOON定義を確実に取得する
-        let globalBalloon = [];
-        for (let line of lines) {
-            const trim = line.trim();
-            // 大文字小文字無視で探す
-            if (trim.toUpperCase().startsWith('BALLOON:')) {
-                const val = trim.substring(8).trim();
-                if (val) {
-                    // 全角カンマ、半角カンマ、スペース、読点に対応して分割
-                    globalBalloon = val.split(/[,、\s]+/)
-                        .map(n => parseInt(n))
-                        .filter(n => !isNaN(n)); // 数値変換できるものだけ抽出
-                }
-                break; // 最初に見つかったBALLOONを採用
-            }
-        }
-        
-        if (globalBalloon.length > 0) {
-            log(`BALLOON定義を取得: 計 ${globalBalloon.length} 個の風船データ`, 'success');
-            // log(`データ: [${globalBalloon.join(', ')}]`);
-        } else {
-            log(`警告: BALLOONタグが見つかりませんでした。`, 'warn');
-        }
-
-        // --- 2. 曲の分割 ---
-        let songs = [];
-        let currentLines = [];
-        let nextSongTag = "";
-        
-        for (let line of lines) {
-            if (line.charCodeAt(0) === 0xFEFF) line = line.substr(1);
-            const t = line.trim().toUpperCase();
-
-            if (t.startsWith('#NEXTSONG')) {
-                songs.push({ lines: currentLines, tag: nextSongTag });
-                currentLines = [];
-                nextSongTag = line.trim(); // 次の曲のためにタグを保存
-            } else {
-                currentLines.push(line);
-            }
-        }
-        songs.push({ lines: currentLines, tag: nextSongTag }); // 最後の曲
-
-        log(`セクション数: ${songs.length} (イントロ含む)`);
-
-        // --- 3. データの分配と出力 ---
         const zip = new JSZip();
-        let balloonCursor = 0; // 現在の風船データの位置
-        let currentBpm = 0;
-        let outputCount = 0;
 
-        // 【イントロ(0番目)の処理】
-        // ファイル出力はしないが、ここで使われている風船の数だけカーソルを進める必要がある
-        if (songs.length > 0) {
+        // 2. BALLOONタグの完全抽出
+        // ファイルのどこにあっても、改行されていても取得できるようにする
+        let globalBalloons = [];
+        let balloonStr = "";
+        
+        // 単純な行検索ではなく、結合してから探す方が安全だが、今回は行指向で探索
+        for(let line of lines) {
+            let t = line.trim();
+            if(t.toUpperCase().startsWith('BALLOON:')) {
+                // "BALLOON:" 以降の文字列を取得
+                let val = t.substring(8).trim();
+                if(val) balloonStr += val;
+                // ※複数行にまたがるBALLOON記述は稀だが、基本は1行想定
+                // カンマ区切りで配列化
+                globalBalloons = balloonStr.split(/[,、\s]+/)
+                    .map(n => parseInt(n))
+                    .filter(n => !isNaN(n));
+                break; // 最初に見つけた定義を採用
+            }
+        }
+        
+        if(globalBalloons.length > 0) {
+            log(`全体BALLOON定義: ${globalBalloons.length}個のデータを取得しました。`);
+        } else {
+            log(`警告: BALLOON定義が見つかりません。全てデフォルト値(5)になります。`, 'warn');
+        }
+
+        // 3. 曲ごとの分割
+        let songs = [];
+        let buffer = [];
+        let nextTag = "";
+
+        for(let line of lines) {
+            if(line.charCodeAt(0)===0xFEFF) line = line.substr(1); // BOM削除
+            let upper = line.trim().toUpperCase();
+
+            if(upper.startsWith('#NEXTSONG')) {
+                songs.push({ lines: buffer, tag: nextTag });
+                buffer = [];
+                nextTag = line.trim();
+            } else {
+                buffer.push(line);
+            }
+        }
+        songs.push({ lines: buffer, tag: nextTag }); // 最後の曲
+
+        // 4. 解析とZIP生成ループ
+        let balloonCursor = 0; // 配列のどこまで使ったか
+        let currentBpm = 0;
+
+        // --- 0曲目（イントロ）の処理 ---
+        if(songs.length > 0) {
             const intro = songs[0];
-            // BPM取得
+            // BPM確保
             intro.lines.forEach(l => {
-                if (l.trim().toUpperCase().startsWith('BPM:')) {
-                    currentBpm = parseFloat(l.split(':')[1]);
-                }
+                if(l.trim().toUpperCase().startsWith('BPM:')) currentBpm = parseFloat(l.split(':')[1]);
             });
-            // 風船消費チェック
-            const introNeeded = countNeededBalloons(intro.lines);
-            if (introNeeded > 0) {
-                balloonCursor += introNeeded;
-                log(`イントロで風船を ${introNeeded}個 消費しました。(Next: #${balloonCursor})`, 'warn');
+            // 風船消費
+            const introCount = countNotes(intro.lines);
+            if(introCount > 0) {
+                balloonCursor += introCount;
+                log(`[Intro] 出力しませんが、風船を ${introCount}個 消費しました。(Next Index: ${balloonCursor})`);
             }
         }
 
-        // 【本編(1番目以降)の処理】
-        for (let i = 1; i < songs.length; i++) {
+        // --- 1曲目以降の処理 ---
+        let processed = 0;
+        for(let i=1; i<songs.length; i++) {
             const song = songs[i];
-            const args = parseNextSongArgs(song.tag);
+            const args = parseArgs(song.tag);
             
-            // メタデータ
             const title = args[0] || `Song_${i}`;
             const wave = args[3] || "";
             const genre = args[2] || "";
-            const scoreInit = args[4] || "";
-            const scoreDiff = args[5] || "";
-
-            // 難易度判別
-            let course = "Oni";
-            let level = "10";
-            if (args.length >= 8) {
-                const valA = parseFloat(args[6]);
-                if (valA > 4) { // OpenTaiko
-                    level = args[6];
-                    course = mapCourse(args[7]);
-                } else { // TNDE
-                    course = mapCourse(args[6]);
-                    level = args[7];
-                }
+            
+            // 難易度解析
+            let course="Oni", level="10";
+            if(args.length >= 8) {
+                if(parseFloat(args[6]) > 4) { level=args[6]; course=mapCourse(args[7]); }
+                else { course=mapCourse(args[6]); level=args[7]; }
             }
 
-            // TJA組み立て
+            // ★ここが核心：風船の数を数え、配列から切り出す★
+            const needed = countNotes(song.lines);
+            let myBalloons = [];
+
+            if(needed > 0) {
+                log(`[${title}] 必要風船数: ${needed}個 (Index: ${balloonCursor}〜)`);
+                for(let k=0; k<needed; k++) {
+                    if(balloonCursor < globalBalloons.length) {
+                        myBalloons.push(globalBalloons[balloonCursor]);
+                        balloonCursor++;
+                    } else {
+                        // データ不足時は5を入れる
+                        myBalloons.push(5);
+                        log(`  -> 警告: 定義不足のため5を補填しました`, 'warn');
+                    }
+                }
+            } else {
+                log(`[${title}] 風船なし`);
+            }
+
+            // TJA生成
             let out = [];
             out.push(`TITLE:${title}`);
-            if (args[1]) out.push(`SUBTITLE:${args[1]}`);
+            if(args[1]) out.push(`SUBTITLE:${args[1]}`);
             out.push(`BPM:${currentBpm}`);
             out.push(`WAVE:${wave}`);
             out.push(`OFFSET:0`);
@@ -387,120 +215,95 @@
             out.push(`COURSE:${course}`);
             out.push(`LEVEL:${level}`);
             
-            // ★風船分配の実行★
-            const needed = countNeededBalloons(song.lines);
-            if (needed > 0) {
-                let assigned = [];
-                // 必要な数だけグローバル配列から取り出す
-                for (let k = 0; k < needed; k++) {
-                    if (balloonCursor < globalBalloon.length) {
-                        assigned.push(globalBalloon[balloonCursor]);
-                        balloonCursor++;
-                    } else {
-                        // データ不足時の安全策（5を補填）
-                        assigned.push(5);
-                        log(`[警告] ${title}: BALLOONデータ不足。自動補完(5)しました。`, 'warn');
-                    }
-                }
-                out.push(`BALLOON:${assigned.join(',')}`);
-                log(`[${title}] 風船${needed}個: [${assigned.join(',')}]`, 'success');
+            // ★絶対に数値を入れる処理
+            if(myBalloons.length > 0) {
+                out.push(`BALLOON:${myBalloons.join(',')}`);
             } else {
                 out.push(`BALLOON:`);
             }
 
-            out.push(`SCOREINIT:${scoreInit}`);
-            out.push(`SCOREDIFF:${scoreDiff}`);
+            out.push(`SCOREINIT:${args[4]||""}`);
+            out.push(`SCOREDIFF:${args[5]||""}`);
             out.push(`SCOREMODE:2`);
-            out.push(``);
+            out.push('');
 
-            // 譜面データ (EXAM除去)
+            // 譜面書き出し
             song.lines.forEach(l => {
-                const t = l.trim().toUpperCase();
-                if (!t.startsWith('EXAM') && !t.startsWith('#LEVELHOLD')) {
+                let t = l.trim().toUpperCase();
+                if(!t.startsWith('EXAM') && !t.startsWith('#LEVELHOLD')) {
                     out.push(l);
                 }
-                // BPM追跡
-                if (t.startsWith('#BPMCHANGE')) {
-                    const p = l.split(/\s+/);
-                    if (p[1]) currentBpm = parseFloat(p[1]);
+                if(t.startsWith('#BPMCHANGE')) {
+                    let p = l.split(/\s+/);
+                    if(p[1]) currentBpm = parseFloat(p[1]);
                 }
             });
 
-            // ZIPへ保存
-            const safeTitle = title.replace(/[\\/:*?"<>|]/g, "_");
-            const folderName = `${i}_${safeTitle}`;
-            const folder = zip.folder(folderName);
+            // ZIP格納
+            const safeName = title.replace(/[\\/:*?"<>|]/g, "_");
+            const fName = `${i}_${safeName}`;
+            const folder = zip.folder(fName);
+            const diffSuffix = (course==="Edit"||course==="4") ? "_Ura" : "";
             
-            const diffSuffix = (course === "Edit" || course === "4") ? "_Ura" : "";
-            folder.file(`${safeTitle}${diffSuffix}.tja`, out.join('\n'));
-
-            // 音源同梱
-            if (wave) {
-                const fName = wave.split(/[/\\]/).pop();
-                if (filesMap.has(fName)) {
-                    folder.file(fName, filesMap.get(fName));
-                } else {
-                    log(`[警告] 音源ファイル未検出: ${fName}`, 'warn');
-                }
+            folder.file(`${safeName}${diffSuffix}.tja`, out.join('\n'));
+            
+            if(wave && fileMap.has(wave.split(/[/\\]/).pop())) {
+                folder.file(wave.split(/[/\\]/).pop(), fileMap.get(wave.split(/[/\\]/).pop()));
             }
-            outputCount++;
+
+            processed++;
         }
 
-        if (outputCount > 0) {
-            log("ZIP生成中...", 'success');
+        if(processed > 0) {
+            log("ZIP生成開始...");
             const blob = await zip.generateAsync({type:"blob"});
-            const link = document.createElement("a");
+            const link = document.createElement('a');
             link.href = URL.createObjectURL(blob);
-            link.download = `${targetTjaFile.name.replace('.tja','')}_split.zip`;
+            link.download = targetTja.name.replace('.tja', '_split.zip');
             document.body.appendChild(link);
             link.click();
             document.body.removeChild(link);
-            log("ダウンロード完了！");
+            log("ダウンロード完了。各曲のTJAを確認してください。", 'success');
         } else {
-            log("出力するデータがありませんでした。", 'error');
+            log("出力する曲がありませんでした。", 'err');
         }
     }
 
     // --- ユーティリティ ---
-    function readFileAsText(file, enc) {
-        return new Promise((r, rej) => {
-            const reader = new FileReader();
-            reader.onload = e => r(e.target.result);
-            reader.onerror = rej;
-            reader.readAsText(file, enc);
+    function readFile(f, enc) {
+        return new Promise((res,rej)=>{
+            const r=new FileReader();
+            r.onload=e=>res(e.target.result);
+            r.onerror=rej;
+            r.readAsText(f, enc);
         });
     }
 
-    function parseNextSongArgs(tag) {
-        return tag.replace(/^#NEXTSONG\s+/i, '').split(',').map(s => s.trim());
-    }
-
-    function mapCourse(id) {
-        const i = parseInt(id);
-        const map = ["Easy", "Normal", "Hard", "Oni", "Edit"];
-        return map[i] || "Oni";
-    }
-
-    // 譜面内の 7(風船) と 9(くす玉) をカウント
-    function countNeededBalloons(lines) {
+    // 7(風船)と9(くす玉)を数える厳格な関数
+    function countNotes(lines) {
         let count = 0;
         let isBody = false;
-        for (let line of lines) {
-            const t = line.trim().toUpperCase();
-            if (t.startsWith('#START')) isBody = true;
-            if (t.startsWith('#END')) isBody = false;
+        for(let line of lines) {
+            let t = line.trim().toUpperCase();
+            if(t.startsWith('#START')) isBody = true;
+            if(t.startsWith('#END')) isBody = false;
             
-            if (isBody) {
-                const clean = line.split('//')[0]; // コメント除去
-                if (clean.trim().startsWith('#')) continue; // 命令無視
+            if(isBody) {
+                // コメントを除外
+                let clean = line.split('//')[0];
+                // 命令を除外
+                if(clean.trim().startsWith('#')) continue;
                 
-                for (let c of clean) {
-                    if (c === '7' || c === '9') count++;
+                for(let c of clean) {
+                    if(c === '7' || c === '9') count++;
                 }
             }
         }
         return count;
     }
+
+    function parseArgs(tag) { return tag.replace(/^#NEXTSONG\s+/i,'').split(',').map(s=>s.trim()); }
+    function mapCourse(id) { const m=["Easy","Normal","Hard","Oni","Edit"]; return m[parseInt(id)]||"Oni"; }
 </script>
 
 </body>
