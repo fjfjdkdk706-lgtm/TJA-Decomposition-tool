@@ -10,10 +10,8 @@
         .container { background-color: white; padding: 2rem; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); text-align: center; }
         h1 { color: #2c3e50; margin-bottom: 10px; }
         
-        /* ファイル選択エリアのデザイン */
         .upload-area { margin: 2rem 0; padding: 1.5rem; border: 2px dashed #cbd5e0; border-radius: 8px; background-color: #f8fafc; }
         
-        /* デフォルトのファイル入力を隠してボタンのみ表示するスタイル */
         input[type="file"] { display: none; }
         .custom-file-upload {
             display: inline-block;
@@ -27,15 +25,17 @@
         }
         .custom-file-upload:hover { background-color: #2d3748; }
 
-        /* ファイル名表示エリア */
+        /* エンコード選択メニュー */
+        .encoding-select { margin-top: 15px; }
+        select { padding: 5px; border-radius: 4px; border: 1px solid #ccc; }
+
         #fileNameDisplay { margin: 15px 0; font-weight: bold; color: #3182ce; min-height: 1.5em; }
 
-        /* 分解ボタン */
         #processBtn {
             background-color: #3182ce; color: white; border: none; padding: 12px 30px; 
             font-size: 1.1rem; font-weight: bold; border-radius: 6px; cursor: pointer; 
             transition: background-color 0.2s; width: 100%; max-width: 300px;
-            display: none; /* 初期状態では非表示 */
+            display: none;
             margin: 0 auto;
         }
         #processBtn:hover { background-color: #2b6cb0; }
@@ -54,6 +54,14 @@
         <label for="fileInput" class="custom-file-upload">📂 ファイルを選択</label>
         <input type="file" id="fileInput">
         
+        <div class="encoding-select">
+            <label for="encoding">文字コード:</label>
+            <select id="encoding">
+                <option value="shift-jis">Shift-JIS (古いファイル向け)</option>
+                <option value="utf-8">UTF-8 (新しいファイル向け)</option>
+            </select>
+        </div>
+        
         <div id="fileNameDisplay">ファイルが選択されていません</div>
 
         <button id="processBtn">ファイルを分解</button>
@@ -71,21 +79,18 @@
     const fileNameDisplay = document.getElementById('fileNameDisplay');
     const processBtn = document.getElementById('processBtn');
     const statusDiv = document.getElementById('status');
+    const encodingSelect = document.getElementById('encoding');
     let selectedFile = null;
 
-    // 1. ファイルが選択された時の処理
     fileInput.addEventListener('change', (e) => {
         if (e.target.files.length > 0) {
             selectedFile = e.target.files[0];
-            // ファイル名を表示
             fileNameDisplay.textContent = `選択中: ${selectedFile.name}`;
-            // 分解ボタンを表示
             processBtn.style.display = "block";
             statusDiv.textContent = "";
         }
     });
 
-    // 2. 「ファイルを分解」ボタンが押された時の処理
     processBtn.addEventListener('click', async () => {
         if (!selectedFile) return;
 
@@ -93,12 +98,9 @@
         processBtn.disabled = true;
 
         try {
-            let text = await readFileAsText(selectedFile, 'utf-8');
-            
-            // 文字コード判定（簡易版）
-            if (!text.includes('TITLE:') && !text.includes('title:')) {
-                text = await readFileAsText(selectedFile, 'shift-jis');
-            }
+            // ユーザーが選択した文字コードで読み込む
+            const selectedEncoding = encodingSelect.value;
+            let text = await readFileAsText(selectedFile, selectedEncoding);
 
             const zip = new JSZip();
             const lines = text.split(/\r?\n/);
@@ -108,8 +110,12 @@
             let songCount = 0;
             let fileCount = 1;
 
-            // 分割ロジック
             for (let line of lines) {
+                // BOM対策（先頭に変な文字が入ることがあるので除去）
+                if (line.charCodeAt(0) === 0xFEFF) {
+                    line = line.substr(1);
+                }
+
                 if (line.trim().toUpperCase().startsWith("TITLE:")) {
                     if (currentBuffer.length > 0) {
                         addToZip(zip, fileCount, currentTitle, currentBuffer);
@@ -117,6 +123,7 @@
                         currentBuffer = [];
                     }
                     const match = line.match(/TITLE:(.*)/i);
+                    // ここでもトリミングしておく
                     currentTitle = match ? match[1].trim() : `Song_${fileCount}`;
                 }
                 currentBuffer.push(line);
@@ -128,18 +135,17 @@
             }
 
             if (songCount <= 1 && !currentTitle) {
-                throw new Error("TITLEタグが見つかりませんでした。");
+                 // TITLEが見つからない場合のエラー
+                 throw new Error("TITLEタグが見つかりませんでした。文字コードを変更して試してみてください。");
             }
 
-            // ZIP生成と自動ダウンロード
             const content = await zip.generateAsync({type:"blob"});
             const downloadLink = document.createElement("a");
             downloadLink.href = URL.createObjectURL(content);
-            // 元のファイル名_split.zip として保存
             const baseName = selectedFile.name.replace(/\.[^/.]+$/, "");
             downloadLink.download = `${baseName}_split.zip`;
             document.body.appendChild(downloadLink);
-            downloadLink.click(); // 自動クリック
+            downloadLink.click();
             document.body.removeChild(downloadLink);
 
             statusDiv.textContent = `完了！ ${songCount}曲をZIPでダウンロードしました。`;
@@ -164,8 +170,11 @@
     }
 
     function addToZip(zip, index, title, lines) {
+        // ファイル名に使えない文字を安全な文字に置換
         let safeTitle = title.replace(/[\\/*?:"<>|]/g, "_");
-        if (!safeTitle) safeTitle = "Untitled";
+        // さらに文字化け対策：空文字になってしまった場合は連番のみにする
+        if (!safeTitle || safeTitle.trim() === "") safeTitle = "Untitled";
+        
         const filename = `${index}_${safeTitle}.tja`;
         zip.file(filename, lines.join("\n"));
     }
